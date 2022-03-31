@@ -69,7 +69,7 @@ class Optimizer(object):
         gives the number of objectives that the black-box is being optimized for
     :param acq_func: str
         acquisition function type that is used for exploitation vs. exploration
-        trade-off, i.e. currently supported ["LCB"] and ["LCB", "HLCB"] for
+        trade-off, i.e. currently supported ["LCB"] and ["LCB", "HLCB"] for # TODO: add EI
         num_obj == 1
     :param acq_optimizer: str
         optimization method used to minimize the acquisition function, i.e.
@@ -139,7 +139,7 @@ class Optimizer(object):
         else:
             self.acq_func_kwargs = acq_func_kwargs
 
-        allowed_acq_funcs = ["LCB", "HLCB", "CWEI"]
+        allowed_acq_funcs = ["LCB", "HLCB", "EI", "CWEI"]
         if self.acq_func not in allowed_acq_funcs:
             raise ValueError("expected acq_func to be in %s, got %s" %
                              (",".join(allowed_acq_funcs), self.acq_func))

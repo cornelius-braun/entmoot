@@ -64,11 +64,16 @@ def _gaussian_acquisition(X, model, y_opt=None,
     # Evaluate acquisition function
     if acq_func == "LCB":
         acq_vals = gaussian_lcb(X, model, kappa, acq_func_kwargs=acq_func_kwargs)
+    elif acq_func == "EI":
+        if y_opt is None:
+            raise ValueError("y_opt cannot needs to have a value!")
+        print("best y:", y_opt)
+        acq_vals = expected_improvement(X, model, y_opt=y_opt)
     elif acq_func == "CWEI":
         if y_opt is None:
             raise ValueError("y_opt cannot needs to have a value!")
         print("best y:", y_opt)
-        acq_vals = cw_ei(X, model, y_opt=y_opt)
+        acq_vals = cw_ei(X, obj_model=model, obj_y_opt=y_opt, constraint_model=None)
     else:
         raise ValueError("Acquisition function not implemented.")
 
@@ -119,10 +124,9 @@ def gaussian_lcb(X, model, kappa=1.96, return_grad=False, acq_func_kwargs=None):
         return mu - kappa * std
 
 
-def cw_ei(X, model, y_opt):
+def expected_improvement(X, model, y_opt):
     """
-    Use the constrained weighted expected improvement to estimate the acquisition values.
-    as seen in Gelbart et al.: https://arxiv.org/pdf/1403.5607.pdf
+    Returns the expected improvement acquisition function
 
     Parameters
     ----------
@@ -144,16 +148,39 @@ def cw_ei(X, model, y_opt):
         Acquisition function values computed at X.
 
     """
+    # Compute posterior
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
-        # TODO: check if constraint is violated
-        a_x = 1.
-        # for constraint in constraints:
-
         mu, std = model.predict(X, return_std=True)
-
         gamma = (mu - y_opt) / std
-        expected_improvement = std * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
 
-        return a_x * expected_improvement
+        return std * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
+
+def cw_ei(X, obj_y_opt, obj_model, constraint_model=None):
+    """
+    Use the constraint weighted expected improvement to
+    return the constraint weighted expected improvement
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features)
+        Values where the acquisition function should be computed.
+    obj_y_opt : array-like, shape (1, n_features)
+        The best function value that was found so far.
+    obj_model : sklearn estimator of the objective function that implements predict with ``return_std``
+        The fit estimator that approximates the objective function through the
+        method ``predict``.
+        It should have a ``return_std`` parameter that returns the standard
+        deviation.
+    constraint_model : sklearn estimator that implements predict
+        The fit estimator that approximates the constraint function through the method ``predict``.
+
+    Returns
+    -------
+    values : array-like, shape (X.shape[0],)
+        Acquisition function values computed at X.
+    """
+    ei = expected_improvement(X, obj_model, obj_y_opt)
+    pof = constraint_model.predict(X) if constraint_model is not None else 1.  # check if constraints are satisfied
+    return ei * pof
