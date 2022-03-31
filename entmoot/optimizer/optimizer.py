@@ -139,7 +139,7 @@ class Optimizer(object):
         else:
             self.acq_func_kwargs = acq_func_kwargs
 
-        allowed_acq_funcs = ["LCB","HLCB"]
+        allowed_acq_funcs = ["LCB", "HLCB", "CWEI"]
         if self.acq_func not in allowed_acq_funcs:
             raise ValueError("expected acq_func to be in %s, got %s" %
                              (",".join(allowed_acq_funcs), self.acq_func))
@@ -454,6 +454,7 @@ class Optimizer(object):
                     y_opt=np.min(self.yi),
                     acq_func=self.acq_func,
                     acq_func_kwargs=self.acq_func_kwargs)
+                #print("got the following values: ", values)
                 # Find the minimum of the acquisition function by randomly
                 # sampling points from the space
                 next_x = X[np.argmin(values)]

@@ -260,6 +260,9 @@ def add_acq_to_gurobi_model(model, model_mu, model_unc,
         model.setObjectiveN(proc_mu, 0, 1, reltol=obj_cost)
         model.setObjectiveN(model_unc, 1, 0)
 
+    elif acq_func == "CWEI":
+        raise NotImplementedError # TODO: finish
+
     model.update()
 
 def get_gurobi_obj(model, est, return_std=False, acq_func_kwargs=None):

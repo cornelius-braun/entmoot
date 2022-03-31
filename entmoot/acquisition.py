@@ -36,7 +36,8 @@ Copyright (c) 2019-2020 Alexander Thebelt.
 
 import numpy as np
 import warnings
-import sys
+#import sys
+from scipy.stats import norm
 
 def _gaussian_acquisition(X, model, y_opt=None,
                           num_obj=1,
@@ -63,6 +64,11 @@ def _gaussian_acquisition(X, model, y_opt=None,
     # Evaluate acquisition function
     if acq_func == "LCB":
         acq_vals = gaussian_lcb(X, model, kappa, acq_func_kwargs=acq_func_kwargs)
+    elif acq_func == "CWEI":
+        if y_opt is None:
+            raise ValueError("y_opt cannot needs to have a value!")
+        print("best y:", y_opt)
+        acq_vals = cw_ei(X, model, y_opt=y_opt)
     else:
         raise ValueError("Acquisition function not implemented.")
 
@@ -112,3 +118,42 @@ def gaussian_lcb(X, model, kappa=1.96, return_grad=False, acq_func_kwargs=None):
 
         return mu - kappa * std
 
+
+def cw_ei(X, model, y_opt):
+    """
+    Use the constrained weighted expected improvement to estimate the acquisition values.
+    as seen in Gelbart et al.: https://arxiv.org/pdf/1403.5607.pdf
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features)
+        Values where the acquisition function should be computed.
+
+    model : sklearn estimator that implements predict with ``return_std``
+        The fit estimator that approximates the function through the
+        method ``predict``.
+        It should have a ``return_std`` parameter that returns the standard
+        deviation.
+
+    y_opt: array-like, shape (1, n_features)
+        The best function value that was found so far.
+
+    Returns
+    -------
+    values : array-like, shape (X.shape[0],)
+        Acquisition function values computed at X.
+
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+
+        # TODO: check if constraint is violated
+        a_x = 1.
+        # for constraint in constraints:
+
+        mu, std = model.predict(X, return_std=True)
+
+        gamma = (mu - y_opt) / std
+        expected_improvement = std * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
+
+        return a_x * expected_improvement
