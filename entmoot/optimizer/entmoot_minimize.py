@@ -35,6 +35,7 @@ Copyright (c) 2019-2020 Alexander Thebelt.
 """
 
 from entmoot.optimizer.optimizer import Optimizer
+from entmoot.utils import plotfx_2d
 
 import copy
 import inspect
@@ -65,6 +66,7 @@ def entmoot_minimize(
     base_estimator_kwargs=None,
     model_queue_size=None,
     verbose=False,
+    plot=False
 ):
     """Run bayesian optimisation loop.
 
@@ -265,6 +267,10 @@ def entmoot_minimize(
     # calculate the total number of initial points
     n_initial_points = n_initial_points + len(x0)
 
+    # check dims
+    if plot and len(dimensions) > 2:
+        raise ValueError(f"can only plot up to 2D objectives, your dimensionality is {len(dimensions)}")
+
     # Build optimizer
 
     # create optimizer class
@@ -353,7 +359,7 @@ def entmoot_minimize(
             print("")
             print(f"\033[1m itr_{itr}\033[0m")
 
-            if isinstance(next_y,Iterable):
+            if isinstance(next_y, Iterable):
                 # in case of batch optimization, print all new proposals and 
                 # mark improvements of objectives with (*)
                 print_str = []
@@ -374,8 +380,11 @@ def entmoot_minimize(
                     print_str = str(round(next_y,5))
                 print(f"   new point obj.: {round(next_y,5)}")
 
-            # print best obj until (not including) current iteration
-            print(f"   best obj.:       {round(best_fun,5)}")
+        # print best obj until (not including) current iteration
+        print(f"   best obj.:       {round(best_fun, 5)}")
+        # plot objective function
+        if plot and optimizer.num_obj==1:
+            plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
 
         itr += 1
 

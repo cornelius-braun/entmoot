@@ -43,6 +43,7 @@ from scipy.optimize import OptimizeResult
 from joblib import dump as dump_
 from joblib import load as load_
 from .space import Space, Dimension
+import matplotlib.pyplot as plt
 
 
 def get_gurobi_env():
@@ -458,3 +459,41 @@ def normalize_dimensions(dimensions):
                                "(%s)" % type(dimension))
 
     return Space(transformed_dimensions)
+
+# Plot
+def plotfx_2d(obj_f, evaluated_points=None, next_x=None, const_f=None):
+    # get data
+    bounds = obj_f.get_bounds()
+    X = get_meshgrid([100]*len(bounds), bounds)
+
+    # evaluate
+    Zo = obj_f(X)
+    Z = Zo
+    if const_f is not None:
+        Zc = const_f(X)
+        mask = Zc >= 0
+        Zc[mask] = np.nan
+        Zc[np.logical_not(mask)] = 1
+        Z *= Zc
+
+    f, axes = plt.subplots(1, 1, figsize=(7, 5))
+    axes.contourf(X[0].flatten(), X[1].flatten(), Z)
+    axes.set_xlabel('x1')
+    axes.set_ylabel('x2')
+    axes.set_xlim([bounds[0][0], bounds[0][1]])
+    axes.set_ylim([bounds[1][0], bounds[1][1]])
+
+    # plot evaluations
+    if evaluated_points is not None and len(evaluated_points) > 0:
+        X = np.array(evaluated_points).T
+        axes.scatter(*X, marker="+", color="blue")
+        axes.scatter(*next_x, marker="x", color="red")
+
+    f.suptitle("Objective function")
+    f.show()
+
+def get_meshgrid(list_number_points_per_axis, dataset_bounds):
+    list_grid_points = []
+    for index_axis, (x_min, x_max) in enumerate(dataset_bounds):
+        list_grid_points.append(np.linspace(x_min, x_max, list_number_points_per_axis[index_axis]))
+    return np.meshgrid(*list_grid_points, sparse=True)
