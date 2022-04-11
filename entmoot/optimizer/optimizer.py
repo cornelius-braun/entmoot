@@ -111,6 +111,7 @@ class Optimizer(object):
         self,
         dimensions: list,
         base_estimator: str = "ENTING",
+        const_estimator: str = "ENTING",
         n_initial_points: int = 50,
         initial_point_generator: str = "random",
         num_obj: int = 1,
@@ -120,12 +121,11 @@ class Optimizer(object):
         acq_func_kwargs: Optional[dict] = None,
         acq_optimizer_kwargs: Optional[dict] = None,
         base_estimator_kwargs: Optional[dict] = None,
+        const_estimator_kwargs: Optional[dict] = None,
         model_queue_size: Optional[int] = None,
         verbose: bool = False
     ):
 
-        from entmoot.utils import is_supported
-        from entmoot.utils import cook_estimator
         from entmoot.utils import cook_initial_point_generator
         from sklearn.utils import check_random_state
 
@@ -170,30 +170,8 @@ class Optimizer(object):
         self.num_obj = num_obj
 
         # create base_estimator
-        self.base_estimator_kwargs = {} if base_estimator_kwargs is None else base_estimator_kwargs
-
-        from entmoot.learning.tree_model import EntingRegressor,MisicRegressor
-
-        if type(base_estimator) not in [EntingRegressor,MisicRegressor]:
-            if type(base_estimator) in [str]:
-                # define random_state of estimator
-                est_random_state = self.rng.randint(0, np.iinfo(np.int32).max)
-
-                # check support of base_estimator if exists
-                if not is_supported(base_estimator):
-                    raise ValueError("Estimator type: %s is not supported." % base_estimator)
-
-                # build base_estimator
-                base_estimator = cook_estimator(
-                    self.space,
-                    base_estimator,
-                    self.base_estimator_kwargs,
-                    num_obj=self.num_obj,
-                    random_state=est_random_state)
-            else:
-                raise ValueError("Estimator type: %s is not supported." % base_estimator)
-
-        self.base_estimator_ = base_estimator
+        self.base_estimator_ = self._create_estimator(base_estimator, base_estimator_kwargs)
+        self.constraint_estimator_ = self._create_estimator(const_estimator, const_estimator_kwargs)
 
         # Configure Optimizer
         self.acq_optimizer = acq_optimizer
@@ -215,6 +193,7 @@ class Optimizer(object):
         # model cache
         self.max_model_queue_size = model_queue_size
         self.models = []
+        self.constraint_models = []
 
         # data set cache
         self.Xi = []
@@ -801,3 +780,30 @@ class Optimizer(object):
                                       gurobi_timelimit=self.gurobi_timelimit)
             pareto.append((temp_x, temp_mu))
         return pareto
+
+    def _create_estimator(self, estimator, estimator_kwargs):
+        # create base_estimator
+        self.base_estimator_kwargs = {} if estimator_kwargs is None else estimator_kwargs
+
+        from entmoot.learning.tree_model import EntingRegressor, MisicRegressor
+        from entmoot.utils import is_supported
+        from entmoot.utils import cook_estimator
+
+        if type(estimator) not in [EntingRegressor, MisicRegressor]:
+            if type(estimator) in [str]:
+                # define random_state of estimator
+                est_random_state = self.rng.randint(0, np.iinfo(np.int32).max)
+
+                # check support of base_estimator if exists
+                if not is_supported(estimator):
+                    raise ValueError("Estimator type: %s is not supported." % estimator)
+
+                # build base_estimator
+                base_estimator = cook_estimator(
+                    self.space,
+                    estimator,
+                    self.base_estimator_kwargs,
+                    num_obj=self.num_obj,
+                    random_state=est_random_state)
+            else:
+                raise ValueError("Estimator type: %s is not supported." % estimator)
