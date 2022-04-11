@@ -1,6 +1,7 @@
 from gurobipy import GRB, quicksum
 import gurobipy as gp
 import numpy as np
+from scipy.stats import norm
 
 def get_opt_core_copy(opt_core):
     new_opt_core = opt_core.copy()
@@ -260,8 +261,19 @@ def add_acq_to_gurobi_model(model, model_mu, model_unc,
         model.setObjectiveN(proc_mu, 0, 1, reltol=obj_cost)
         model.setObjectiveN(model_unc, 1, 0)
 
-    elif acq_func == "CWEI":
-        raise NotImplementedError # TODO: finish
+    elif acq_func == "CWEI" or acq_func == "EI":
+        if est._y is None:
+            raise AttributeError("no y's are stored atm")
+        else:
+            print(np.min(est._y))
+        y_opt = np.min(est._y)
+        if model_unc is not None and False: # TODO: what happens when we have no uncertainty??
+            gamma = (proc_mu - y_opt) * model_unc
+        else:
+            gamma = proc_mu - y_opt
+        ob_expr = model_unc * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
+        model.setObjective(ob_expr, GRB.MINIMIZE)
+        #raise NotImplementedError("Gurobipy cannot solve for acq. that contains pdf / cdf") # TODO: integrate the constraint surrogates via the domains??
 
     model.update()
 

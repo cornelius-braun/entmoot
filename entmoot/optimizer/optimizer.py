@@ -423,13 +423,11 @@ class Optimizer(object):
             est = self.base_estimator_.copy()
             self.base_estimator_ = est
 
-            # esimator is fitted using a generic fit function
+            # estimator is fitted using a generic fit function
             est.fit(self.space.transform(self.Xi), self.yi)
 
             # we cache the estimator in model_queue
-            if self.max_model_queue_size is None:
-                self.models.append(est)
-            elif len(self.models) < self.max_model_queue_size:
+            if self.max_model_queue_size is None or len(self.models) < self.max_model_queue_size:
                 self.models.append(est)
             else:
                 # Maximum list size obtained, remove oldest model.
@@ -443,6 +441,7 @@ class Optimizer(object):
                 self.printed_switch_to_model = True
 
             # this code provides a heuristic solution that uses sampling as the optimization strategy
+            # TODO: can we use constraints here??
             if self.acq_optimizer == "sampling":
                 # sample a large number of points and then pick the best ones as
                 # starting points

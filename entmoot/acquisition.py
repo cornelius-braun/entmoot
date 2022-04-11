@@ -182,5 +182,12 @@ def cw_ei(X, obj_y_opt, obj_model, constraint_model=None):
         Acquisition function values computed at X.
     """
     ei = expected_improvement(X, obj_model, obj_y_opt)
-    pof = constraint_model.predict(X) if constraint_model is not None else 1.  # check if constraints are satisfied
+    pof = prob_of_feasibility(X, constraint_model) if constraint_model is not None else 1.  # check if constraints are satisfied
     return ei * pof
+
+def prob_of_feasibility(X, model, threshold=0.5):
+    # idea: here we evaluate how likely it is that the constraint is met
+    # i.e. given some data we check prob. of observing the desired value or smaller
+    # only works for inequality constraints as of now (for equality it would just be pdf)
+    mu, std = model.predict(X, return_std=True)
+    return norm.cdf(mu, std)(threshold)
