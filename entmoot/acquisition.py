@@ -39,7 +39,10 @@ import warnings
 #import sys
 from scipy.stats import norm
 
-def _gaussian_acquisition(X, model, y_opt=None,
+def _gaussian_acquisition(X,
+                          model,
+                          y_opt=None,
+                          constraint_pof=None,
                           num_obj=1,
                           acq_func="LCB",
                           acq_func_kwargs=None):
@@ -71,9 +74,11 @@ def _gaussian_acquisition(X, model, y_opt=None,
         acq_vals = expected_improvement(X, model, y_opt=y_opt)
     elif acq_func == "CWEI":
         if y_opt is None:
-            raise ValueError("y_opt cannot needs to have a value!")
-        print("best y:", y_opt)
-        acq_vals = cw_ei(X, obj_model=model, obj_y_opt=y_opt, constraint_model=None)
+            raise ValueError("y_opt needs to have a value!")
+        if constraint_pof is None:
+            raise ValueError("constraint_pof needs to be defined!")
+        acq_vals = cw_ei(X, obj_model=model, obj_y_opt=y_opt, pof=constraint_pof)
+        print(acq_vals)
     else:
         raise ValueError("Acquisition function not implemented.")
 
@@ -153,11 +158,11 @@ def expected_improvement(X, model, y_opt):
         warnings.simplefilter("ignore")
 
         mu, std = model.predict(X, return_std=True)
-        gamma = (mu - y_opt) / std
+        gamma = get_gamma(mu, y_opt, std)
 
         return std * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
 
-def cw_ei(X, obj_y_opt, obj_model, constraint_model=None):
+def cw_ei(X, obj_y_opt, obj_model, pof=None):
     """
     Use the constraint weighted expected improvement to
     return the constraint weighted expected improvement
@@ -181,13 +186,26 @@ def cw_ei(X, obj_y_opt, obj_model, constraint_model=None):
     values : array-like, shape (X.shape[0],)
         Acquisition function values computed at X.
     """
+    #if pof is None:
+    #    raise ValueError("Constraint probabilities are not defined")
     ei = expected_improvement(X, obj_model, obj_y_opt)
-    pof = prob_of_feasibility(X, constraint_model) if constraint_model is not None else 1.  # check if constraints are satisfied
+    pof = prob_of_feasibility(X, pof) if pof is not None else 1.  # check if constraints are satisfied
     return ei * pof
 
-def prob_of_feasibility(X, model, threshold=0.5):
+def prob_of_feasibility(X, model):
     # idea: here we evaluate how likely it is that the constraint is met
     # i.e. given some data we check prob. of observing the desired value or smaller
     # only works for inequality constraints as of now (for equality it would just be pdf)
-    mu, std = model.predict(X, return_std=True)
-    return norm.cdf(mu, std)(threshold)
+    feas = model.predict(X)
+    #print(np.where(feas == True))
+    return feas
+    # when we want uncertainty
+    #mu, std = model.predict(X, return_std=True)
+    #return norm.cdf(mu, std)(threshold)
+
+def get_gamma(X, y_opt, model_uncertainty=None):
+    if model_uncertainty is not None:
+        gamma = (X - y_opt) / model_uncertainty
+    else:
+        gamma = X - y_opt
+    return gamma

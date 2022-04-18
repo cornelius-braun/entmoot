@@ -497,3 +497,11 @@ def get_meshgrid(list_number_points_per_axis, dataset_bounds):
     for index_axis, (x_min, x_max) in enumerate(dataset_bounds):
         list_grid_points.append(np.linspace(x_min, x_max, list_number_points_per_axis[index_axis]))
     return np.meshgrid(*list_grid_points, sparse=True)
+
+def list_push(list, item, max_queue_size=None):
+    if max_queue_size is None or len(list) < max_queue_size:
+        list.append(item)
+    else:
+        # Maximum list size obtained, remove oldest model.
+        list.pop(0)
+        list.append(item)

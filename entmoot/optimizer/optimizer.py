@@ -37,8 +37,10 @@ from typing import Optional
 import warnings
 from numbers import Number
 import numpy as np
+from lightgbm import LGBMClassifier
 
 from entmoot.acquisition import _gaussian_acquisition
+from entmoot.utils import list_push
 
 
 class Optimizer(object):
@@ -111,7 +113,6 @@ class Optimizer(object):
         self,
         dimensions: list,
         base_estimator: str = "ENTING",
-        const_estimator: str = "ENTING",
         n_initial_points: int = 50,
         initial_point_generator: str = "random",
         num_obj: int = 1,
@@ -121,7 +122,6 @@ class Optimizer(object):
         acq_func_kwargs: Optional[dict] = None,
         acq_optimizer_kwargs: Optional[dict] = None,
         base_estimator_kwargs: Optional[dict] = None,
-        const_estimator_kwargs: Optional[dict] = None,
         model_queue_size: Optional[int] = None,
         verbose: bool = False
     ):
@@ -171,7 +171,9 @@ class Optimizer(object):
 
         # create base_estimator
         self.base_estimator_ = self._create_estimator(base_estimator, base_estimator_kwargs)
-        self.constraint_estimator_ = self._create_estimator(const_estimator, const_estimator_kwargs)
+
+        # create constraint model
+        self.constraint_model = LGBMClassifier(verbose=-1)
 
         # Configure Optimizer
         self.acq_optimizer = acq_optimizer
@@ -193,11 +195,11 @@ class Optimizer(object):
         # model cache
         self.max_model_queue_size = model_queue_size
         self.models = []
-        self.constraint_models = []
 
         # data set cache
         self.Xi = []
         self.yi = []
+        self.yc = []
 
         # model_mu and model_std cache
         self.model_mu = []
@@ -339,7 +341,7 @@ class Optimizer(object):
         # deletion of points with "lie" objective (the copy of
         # optimizer is simply discarded)
         opt = self.copy(
-            random_state=self.rng.randint(0,np.iinfo(np.int32).max))
+            random_state=self.rng.randint(0, np.iinfo(np.int32).max))
 
         X = []
         for i in range(n_points):
@@ -404,14 +406,11 @@ class Optimizer(object):
 
             # estimator is fitted using a generic fit function
             est.fit(self.space.transform(self.Xi), self.yi)
+            # fit constraint model
+            self.constraint_model.fit(self.Xi, np.array(self.yc).flatten())
 
             # we cache the estimator in model_queue
-            if self.max_model_queue_size is None or len(self.models) < self.max_model_queue_size:
-                self.models.append(est)
-            else:
-                # Maximum list size obtained, remove oldest model.
-                self.models.pop(0)
-                self.models.append(est)
+            list_push(self.models, est, self.max_model_queue_size)
 
             if not self.printed_switch_to_model:
                 print("")
@@ -427,8 +426,11 @@ class Optimizer(object):
                 X = self.space.transform(self.space.rvs(
                     n_samples=self.n_points, random_state=self.rng))
 
+                # TODO: we need to pass the constraint model here
+                res = self.constraint_model.predict(X)
+                print(res, self.yc)
                 values = _gaussian_acquisition(
-                    X=X, model=est,
+                    X=X, model=est, constraint_pof=self.constraint_model,
                     y_opt=np.min(self.yi),
                     acq_func=self.acq_func,
                     acq_func_kwargs=self.acq_func_kwargs)
@@ -510,7 +512,7 @@ class Optimizer(object):
             # return point computed from last call to tell()
             return next_x
 
-    def tell(self, x: list, y: list, fit: Optional[bool] = True):
+    def tell(self, x: list, y: list, const_y: Optional[list] = None, fit: Optional[bool] = True):
         """
         Checks that both x and y are valid points for the given search space.
 
@@ -522,9 +524,9 @@ class Optimizer(object):
         from entmoot.utils import check_x_in_space
         check_x_in_space(x, self.space)
         self._check_y_is_valid(x, y)
-        self._tell(x, y, fit=fit)
+        self._tell(x, y, const_y=const_y, fit=fit)
 
-    def _tell(self, x, y, fit=True):
+    def _tell(self, x, y, const_y=None, fit=True):
         """
         Adds the new data points to the data set.
 
@@ -541,10 +543,12 @@ class Optimizer(object):
             self.Xi.extend(x)
             self.yi.extend(y)
             self._n_initial_points -= len(y)
+            self.yc.append(const_y)
         elif is_listlike(x):
             self.Xi.append(x)
             self.yi.append(y)
             self._n_initial_points -= 1
+            self.yc.append(const_y)
         else:
             raise ValueError("Type of arguments `x` (%s) and `y` (%s) "
                              "not compatible." % (type(x), type(y)))
@@ -805,5 +809,6 @@ class Optimizer(object):
                     self.base_estimator_kwargs,
                     num_obj=self.num_obj,
                     random_state=est_random_state)
+                return base_estimator
             else:
                 raise ValueError("Estimator type: %s is not supported." % estimator)
