@@ -38,7 +38,7 @@ import warnings
 from numbers import Number
 import numpy as np
 
-from entmoot.acquisition import _gaussian_acquisition
+from entmoot.acquisition import _gaussian_acquisition, bfgs_max_acq
 from entmoot.learning.tree_model import EntingConstraintModel
 from entmoot.utils import list_push
 
@@ -181,6 +181,8 @@ class Optimizer(object):
                 constraint_model = EntingConstraintModel(constraint_regressor, constraint_rhs)
                 self.constraint_model_list.append(constraint_model)
 
+        self.num_cons = len(self.constraint_model_list)
+
         # Configure Optimizer
         self.acq_optimizer = acq_optimizer
 
@@ -205,7 +207,7 @@ class Optimizer(object):
         # data set cache
         self.Xi = []
         self.yi = []
-        self.yc = []
+        self.yc = [[] for i in range(self.num_cons)]     # constraint values need to be stored in separate lists
 
         # model_mu and model_std cache
         self.model_mu = []
@@ -413,8 +415,8 @@ class Optimizer(object):
             # estimator is fitted using a generic fit function
             est.fit(self.space.transform(self.Xi), self.yi)
             # fit constraint model
-            for model in self.constraint_model_list:
-                model.model.fit(self.space.transform(self.Xi), self.yi)
+            for i, model in enumerate(self.constraint_model_list):
+                model.fit(self.space.transform(self.Xi), self.yc[i])
 
             # we cache the estimator in model_queue
             list_push(self.models, est, self.max_model_queue_size)
@@ -482,7 +484,6 @@ class Optimizer(object):
 
             elif self.acq_optimizer == "bfgs":
                 n_seeds = 10
-                from entmoot.optimizer.blackbox_optimize import bfgs_max_acq
                 X = self.space.transform(self.space.rvs(
                     n_samples=self.n_points, random_state=self.rng))
                 X_seeds = self.space.transform(self.space.rvs(
@@ -565,12 +566,14 @@ class Optimizer(object):
             self.Xi.extend(x)
             self.yi.extend(y)
             self._n_initial_points -= len(y)
-            self.yc.append(const_y)
+            for i in range(self.num_cons):
+                self.yc[i].extend(const_y[i])
         elif is_listlike(x):
             self.Xi.append(x)
             self.yi.append(y)
             self._n_initial_points -= 1
-            self.yc.append(const_y)
+            for i in range(self.num_cons):
+                self.yc[i].append(const_y[i])
         else:
             raise ValueError("Type of arguments `x` (%s) and `y` (%s) "
                              "not compatible." % (type(x), type(y)))

@@ -36,9 +36,9 @@ Copyright (c) 2019-2020 Alexander Thebelt.
 
 import numpy as np
 import warnings
-#import sys
 from scipy.stats import norm
 from typing import Optional
+from scipy.optimize import minimize
 
 def _gaussian_acquisition(X,
                           model,
@@ -211,3 +211,48 @@ def get_gamma(X, y_opt, model_uncertainty=None):
     else:
         gamma = X - y_opt
     return gamma
+
+def bfgs_max_acq(X_tries,
+                 X_seeds,
+                 model,
+                 y_opt=None,
+                 constraint_pof=None,
+                 num_obj=1,
+                 acq_func="LCB",
+                 space=None,
+                 acq_func_kwargs=None
+                 ):
+
+    # define proxy for acquisition
+    acquisition_fct = lambda X: _gaussian_acquisition(X=X, model=model, y_opt=y_opt, constraint_pof=constraint_pof,
+                                                      num_obj=num_obj, acq_func=acq_func,
+                                                      acq_func_kwargs=acq_func_kwargs)
+
+    # Warm up with random points
+    ys = acquisition_fct(X_tries)  # acquisitions[acq_func](X_tries, model)
+    x_max = X_tries[ys.argmax()]
+    max_acq = ys.max()
+
+    # Explore the parameter space more throughly
+    for x_try in X_seeds:
+        # Find the minimum of minus the acquisition function
+        res = minimize(lambda x: -acquisition_fct(np.array(x).reshape(1, -1)),
+                       x_try.reshape(1, -1),
+                       bounds=space.bounds,
+                       method="L-BFGS-B")
+
+        # See if success
+        if not res.success:
+            continue
+
+        # Store it if better than previous minimum(maximum).
+        if max_acq is None or -res.fun >= max_acq:
+            x_max = res.x
+            max_acq = -res.fun
+
+    # Clip output to make sure it lies within the bounds. Due to floating
+    # point technicalities this is not always the case.
+    # return np.clip(x_max, bounds[:, 0], bounds[:, 1])
+    model_mu, model_std = model.predict(np.asarray(x_max).reshape(1, -1), return_std=True)
+
+    return x_max, model_mu, model_std

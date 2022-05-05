@@ -414,3 +414,6 @@ class EntingConstraintModel:
 
     def evaluate(self, X, return_std=True):
         return self.model.predict(X, return_std=return_std)
+
+    def fit(self, X, y):
+        return self.model.fit(X, y)

@@ -1,43 +1,93 @@
-import numbers
-from entmoot import Optimizer
 import numpy as np
-from entmoot.acquisition import _gaussian_acquisition
-from scipy.optimize import minimize
-
-from entmoot.learning import EntingRegressor
+import copy
+import inspect
+import numbers
+from entmoot.optimizer.optimizer import Optimizer
+from entmoot.utils import plotfx_2d
+from typing import List
 
 try:
     from collections.abc import Iterable
 except ImportError:
     from collections import Iterable
 
+class BlackBoxConstraint:
+    """
+    Base class to formulate back box constraints.
+    Every class object specifies a constraint of the shape 'evaluator' <= 'rhs'.
 
-# TODO: remove this eventually
-def bfgs_optimize(
-        func,
-        dimensions,
-        n_calls=60,
-        batch_strategy="cl_mean",
-        base_estimator="GBRT",
-        n_initial_points=50,
-        initial_point_generator="random",
-        acq_func="LCB",
-        acq_optimizer="global",
-        x0=None,
-        y0=None,
-        random_state=None,
-        acq_func_kwargs=None,
-        acq_optimizer_kwargs=None,
-        base_estimator_kwargs=None,
-        model_queue_size=None,
-        verbose=False,
-        plot=False
+    Parameters
+    ----------
+    n_dim : int,
+        number of dimensions that we operate in.
+
+    evaluator : function, -> float
+        the left-hand side of the constraint. Can be any function that maps to R.
+
+    rhs : float,
+        right-hand side of a less-than constraint.
+    """
+    def __init__(self,
+                 n_dim: int,
+                 evaluator,
+                 rhs: int
+                 ):
+        self.n_dim = n_dim
+        self.evaluator = evaluator
+        self.rhs = rhs
+
+    def evaluate(self, X):
+        X0 = np.reshape(X, (-1, self.n_dim))
+        return float(self.evaluator(X0))
+
+def entmoot_blackbox(
+    func,
+    dimensions,
+    constraints: List[BlackBoxConstraint] = None,
+    n_calls=60,
+    batch_size=None,
+    batch_strategy="cl_mean",
+    n_points=10000,
+    base_estimator="ENTING",
+    n_initial_points=50,
+    initial_point_generator="random",
+    acq_func="LCB",
+    acq_optimizer="global",
+    x0=None,
+    y0=None,
+    random_state=None,
+    acq_func_kwargs=None,
+    acq_optimizer_kwargs=None,
+    base_estimator_kwargs=None,
+    model_queue_size=None,
+    verbose=False,
+    plot=False
 ):
+    if constraints is None:
+        raise ValueError("No constraints have been specified. Please specify constraints or use 'entmoot_minimize'")
+
+    specs = {"args": copy.copy(inspect.currentframe().f_locals),
+             "function": inspect.currentframe().f_code.co_name}
+
+    if acq_optimizer_kwargs is None:
+        acq_optimizer_kwargs = {}
+
+    acq_optimizer_kwargs["n_points"] = n_points
+
+    # Initialize optimization
+    # Suppose there are points provided (x0 and y0), record them
+
+    # check x0: list-like, requirement of minimal points
     if x0 is None:
         x0 = []
     elif not isinstance(x0[0], (list, tuple)):
         x0 = [x0]
+    if not isinstance(x0, list):
+        raise ValueError("`x0` should be a list, but got %s" % type(x0))
 
+    if n_initial_points <= 0 and not x0:
+        raise ValueError("Either set `n_initial_points` > 0,"
+                         " or provide `x0`")
     # check y0: list-like, requirement of maximal calls
     if isinstance(y0, Iterable):
         y0 = list(y0)
@@ -50,7 +100,18 @@ def bfgs_optimize(
     # calculate the total number of initial points
     n_initial_points = n_initial_points + len(x0)
 
+    # get the constraint r
+    rhs_list = []
+    for constraint in constraints:
+        rhs_list.append(constraint.rhs)
+    print(rhs_list)
+
+    # check dims
+    if plot and len(dimensions) > 2:
+        raise ValueError(f"can only plot up to 2D objectives, your dimensionality is {len(dimensions)}")
+
     # Build optimizer
+
     # create optimizer class
     optimizer = Optimizer(
         dimensions,
@@ -64,7 +125,8 @@ def bfgs_optimize(
         acq_optimizer_kwargs=acq_optimizer_kwargs,
         base_estimator_kwargs=base_estimator_kwargs,
         model_queue_size=model_queue_size,
-        verbose=verbose
+        verbose=verbose,
+        bb_constr_rhs=rhs_list
     )
 
     # Record provided points
@@ -82,7 +144,10 @@ def bfgs_optimize(
                 "`y0` should be an iterable or a scalar, got %s" % type(y0))
         if len(x0) != len(y0):
             raise ValueError("`x0` and `y0` should have the same length")
-        result = optimizer.tell(x0, y0)
+        # FIXME: this needs testing!!!
+        y_feas = [constraint.evaluate(x0) for constraint in constraints]
+        result = optimizer.tell(x0, y0, const_y=y_feas)
+        result.specs = specs
 
     # Handle solver output
     if not isinstance(verbose, (int, type(None))):
@@ -112,15 +177,25 @@ def bfgs_optimize(
 
     while _n_calls > 0:
 
-        # get next points
-        _n_calls -= 1
-        next_x = optimizer.ask(strategy=batch_strategy)
+        # check if optimization is performed in batches
+        if batch_size is not None:
+            _batch_size = min([_n_calls, batch_size])
+            _n_calls -= _batch_size
+            next_x = optimizer.ask(_batch_size, strategy=batch_strategy)
+        else:
+            _n_calls -= 1
+            next_x = optimizer.ask(strategy=batch_strategy)
 
+        # get next value of objective and constraint surrogates
         next_y = func(next_x)
+        next_const = [constraint.evaluate(next_x) for constraint in constraints]
 
         # first iteration uses next_y as best point instead of min of next_y
         if itr == 1:
-            best_fun = next_y
+            if batch_size is None:
+                best_fun = next_y
+            else:
+                best_fun = min(next_y)
 
         # handle output print at every iteration
         if verbose > 0:
@@ -146,17 +221,22 @@ def bfgs_optimize(
 
         # print best obj until (not including) current iteration
         print(f"   best obj.:       {round(best_fun, 5)}")
+        # plot objective function
+        if plot and optimizer.num_obj == 1:
+            plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
 
         itr += 1
 
         optimizer.tell(
-            next_x, next_y,
-            fit=not _n_calls <= 0
+            next_x, next_y, next_const,
+            fit=batch_size is None and not _n_calls <= 0
         )
 
         result = optimizer.get_result()
 
         best_fun = result.fun
+
+        result.specs = specs
 
     # print end of solve once convergence criteria is met
     if verbose > 0:
@@ -166,65 +246,3 @@ def bfgs_optimize(
         print("")
 
     return result
-
-
-def bfgs_max_acq(X_tries,
-                 X_seeds,
-                 model,
-                 y_opt=None,
-                 constraint_pof=None,
-                 num_obj=1,
-                 acq_func="LCB",
-                 space=None,
-                 acq_func_kwargs=None
-                 ):
-    # Check inputs
-    # assert acq_func in ["LCB", "EI", "CWEI"]
-
-    # define proxy for acquisition
-    acquisition_fct = lambda X: _gaussian_acquisition(X=X, model=model, y_opt=y_opt, constraint_pof=constraint_pof,
-                                                      num_obj=num_obj, acq_func=acq_func,
-                                                      acq_func_kwargs=acq_func_kwargs)
-
-    # Warm up with random points
-    ys = acquisition_fct(X_tries)  # acquisitions[acq_func](X_tries, model)
-    x_max = X_tries[ys.argmax()]
-    max_acq = ys.max()
-
-    # Explore the parameter space more throughly
-    for x_try in X_seeds:
-        # Find the minimum of minus the acquisition function
-        res = minimize(lambda x: -acquisition_fct(np.array(x).reshape(1, -1)),
-                       x_try.reshape(1, -1),
-                       bounds=space.bounds,
-                       method="L-BFGS-B")
-
-        # See if success
-        if not res.success:
-            continue
-
-        # Store it if better than previous minimum(maximum).
-        if max_acq is None or -res.fun >= max_acq:
-            x_max = res.x
-            max_acq = -res.fun
-
-    # Clip output to make sure it lies within the bounds. Due to floating
-    # point technicalities this is not always the case.
-    # return np.clip(x_max, bounds[:, 0], bounds[:, 1])
-    model_mu, model_std = model.predict(np.asarray(x_max).reshape(1, -1), return_std=True)
-
-    return x_max, model_mu, model_std
-
-class BlackBoxConstraint:
-    def __init__(self,
-                 n_dim,
-                 evaluator,
-                 rhs):
-        self.n_dim = n_dim
-        self.evaluator = evaluator
-        self.rhs = rhs
-
-    def evaluate(self, X):
-        X0 = np.reshape(X, (-1, self.n_dim))
-        return self.evaluator(X0)
-
