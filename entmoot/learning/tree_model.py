@@ -394,81 +394,23 @@ class MisicRegressor(EntingRegressor):
         # update std estimator
         self.std_estimator.update(X, y, gbm_model, cat_column=self.cat_idx)
 
-# TODO: figure out if we want this or not
-class EntingClassifier:
-    """Predict with LightGBM tree model (and include model uncertainty
-    defined by distance-based standard estimator.)
+# TODO: maybe make this a child class of Enting regressor
+class EntingConstraintModel:
+    """Predict value of constraint surrogate and store the RHS of the constraint
 
         Parameters
         ----------
-        base_estimator : LGBMRegressor instance, EntingRegressor instance or
-            None (default). If LGBMRegressor instance of None is given: new
-            EntingRegressor is defined. If EntingRegressor is given: base_estimator
-            and std_estimator are given to new instance.
-        (std_estimator : DistanceBasedStd instance,
-            Determines which measure is used to capture uncertainty.)
-        random_state : int, RandomState instance, or None (default)
-            Set random state to something other than None for reproducible
-            results.
+        base_estimator : EntingRegressor instance.
+        RHS : float
+            Right-hand side of a constraint of the shape <= RHS.
+            # TODO: extend this later to also work with equality constraints
         """
 
     def __init__(self,
-                space,
-                base_estimator,
-                random_state=None,
-                cat_idx=None):
+                 base_estimator: EntingRegressor,
+                 rhs: int):
+        self.model = base_estimator
+        self.rhs = rhs
 
-        if cat_idx is None:
-            cat_idx = []
-
-        np.random.seed(random_state)
-
-        self.random_state = random_state
-        self.space = space
-        self.base_estimator = base_estimator
-        self.num_obj = len(self.base_estimator)
-
-    def fit(self, X, y):
-        """Fit model and standard estimator to observations.
-
-                Parameters
-                ----------
-                X : array-like, shape=(n_samples, n_features)
-                    Training vectors, where `n_samples` is the number of samples
-                    and `n_features` is the number of features.
-
-                y : array-like, shape=(n_samples,)
-                    Target values (real numbers in regression)
-
-                Returns
-                -------
-                -
-                """
-        self.classifier_ = []
-        y = np.asarray(y)
-        self._y = y
-
-        for i, est in enumerate(self.base_estimator):
-            # suppress lgbm output
-            est.set_params(
-                random_state=self.random_state,
-                verbose=-1
-            )
-
-            # clone base_estimator (only supported for sklearn estimators)
-            self.classifier_.append(clone(est))
-
-            # update tree model regressor
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-
-                if self.num_obj > 1:
-                    self.classifier_[-1].fit(X, y[:, i])
-                else:
-                    self.classifier_[-1].fit(X, y)
-
-
-    def copy(self):
-        return copy.copy(self)
+    def evaluate(self, X, return_std=True):
+        return self.model.predict(X, return_std=return_std)

@@ -4,6 +4,8 @@ import numpy as np
 from entmoot.acquisition import _gaussian_acquisition
 from scipy.optimize import minimize
 
+from entmoot.learning import EntingRegressor
+
 try:
     from collections.abc import Iterable
 except ImportError:
@@ -212,3 +214,17 @@ def bfgs_max_acq(X_tries,
     model_mu, model_std = model.predict(np.asarray(x_max).reshape(1, -1), return_std=True)
 
     return x_max, model_mu, model_std
+
+class BlackBoxConstraint:
+    def __init__(self,
+                 n_dim,
+                 evaluator,
+                 rhs):
+        self.n_dim = n_dim
+        self.evaluator = evaluator
+        self.rhs = rhs
+
+    def evaluate(self, X):
+        X0 = np.reshape(X, (-1, self.n_dim))
+        return self.evaluator(X0)
+

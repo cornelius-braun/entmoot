@@ -40,6 +40,7 @@ from entmoot.utils import plotfx_2d
 import copy
 import inspect
 import numbers
+import numpy as np
 
 try:
     from collections.abc import Iterable
@@ -408,9 +409,10 @@ def entmoot_minimize(
 
     return result
 
-def entmoot_blackbox(func,
+def entmoot_blackbox(
+    func,
     dimensions,
-    const_func,
+    constraints: list = None,
     n_calls=60,
     batch_size=None,
     batch_strategy="cl_mean",
@@ -430,6 +432,9 @@ def entmoot_blackbox(func,
     verbose=False,
     plot=False
 ):
+    if constraints is None:
+        raise ValueError("No constraints have been specified. Please specify constraints or use 'entmoot_minimize'")
+
     specs = {"args": copy.copy(inspect.currentframe().f_locals),
              "function": inspect.currentframe().f_code.co_name}
 
@@ -484,7 +489,7 @@ def entmoot_blackbox(func,
         base_estimator_kwargs=base_estimator_kwargs,
         model_queue_size=model_queue_size,
         verbose=verbose,
-        bb_cf=True
+        bb_constr_rhs = [2, 4]
     )
 
     # Record provided points
@@ -502,8 +507,10 @@ def entmoot_blackbox(func,
                 "`y0` should be an iterable or a scalar, got %s" % type(y0))
         if len(x0) != len(y0):
             raise ValueError("`x0` and `y0` should have the same length")
-        y_feas = list(map(const_func, x0))
-        result = optimizer.tell(x0, y0, y_const=y_feas)
+        # FIXME: this needs testing!!!
+        y_feas = [map(const_func, x0) for const_func in constraints]
+        print(y_feas, np.all(y_feas, axis=1))
+        result = optimizer.tell(x0, y0, const_y=y_feas)
         result.specs = specs
 
     # Handle solver output
@@ -544,7 +551,8 @@ def entmoot_blackbox(func,
             next_x = optimizer.ask(strategy=batch_strategy)
 
         next_y = func(next_x)
-        next_const = const_func(next_x)
+        next_const = [constraint.evaluate(next_x) for constraint in constraints]
+        print(next_x, next_const)
 
         # first iteration uses next_y as best point instead of min of next_y
         if itr == 1:

@@ -37,10 +37,9 @@ from typing import Optional
 import warnings
 from numbers import Number
 import numpy as np
-from lightgbm import LGBMClassifier
 
 from entmoot.acquisition import _gaussian_acquisition
-from entmoot.space import Categorical
+from entmoot.learning.tree_model import EntingConstraintModel
 from entmoot.utils import list_push
 
 
@@ -117,6 +116,7 @@ class Optimizer(object):
         n_initial_points: int = 50,
         initial_point_generator: str = "random",
         num_obj: int = 1,
+        bb_constr_rhs: Optional[list] = None,
         acq_func: str = "LCB",
         acq_optimizer: str = "global",
         random_state: Optional[int] = None,
@@ -124,8 +124,7 @@ class Optimizer(object):
         acq_optimizer_kwargs: Optional[dict] = None,
         base_estimator_kwargs: Optional[dict] = None,
         model_queue_size: Optional[int] = None,
-        verbose: bool = False,
-        bb_cf: bool = False
+        verbose: bool = False
     ):
 
         from entmoot.utils import cook_initial_point_generator
@@ -174,14 +173,13 @@ class Optimizer(object):
         # create base_estimator
         self.base_estimator_ = self._create_estimator(base_estimator, self.space, base_estimator_kwargs)
 
-        # create constraint model
-        self.bb_cf = bb_cf
-        if self.bb_cf:
-            # feasibility_space = Space([(True, False)])
-            # self.constraint_model = self._create_estimator("ENTING", feasibility_space, None)
-            self.constraint_model = LGBMClassifier(verbose=-1) # works
-        else:
-            self.constraint_model = None
+        # create constraint models
+        self.constraint_model_list = []
+        if bb_constr_rhs is not None:
+            for constraint_rhs in bb_constr_rhs:
+                constraint_regressor = self._create_estimator("ENTING", self.space, base_estimator_kwargs)
+                constraint_model = EntingConstraintModel(constraint_regressor, constraint_rhs)
+                self.constraint_model_list.append(constraint_model)
 
         # Configure Optimizer
         self.acq_optimizer = acq_optimizer
@@ -415,8 +413,8 @@ class Optimizer(object):
             # estimator is fitted using a generic fit function
             est.fit(self.space.transform(self.Xi), self.yi)
             # fit constraint model
-            if self.bb_cf:
-                self.constraint_model.fit(np.array(self.Xi), np.array(self.yc).flatten())
+            for model in self.constraint_model_list:
+                model.model.fit(self.space.transform(self.Xi), self.yi)
 
             # we cache the estimator in model_queue
             list_push(self.models, est, self.max_model_queue_size)
@@ -434,15 +432,12 @@ class Optimizer(object):
                 X = self.space.transform(self.space.rvs(
                     n_samples=self.n_points, random_state=self.rng))
 
-                # NEW: pass the constraint model here
-                # res = self.constraint_model.predict(np.array(self.Xi))
-                # print(res, self.yc)
+                # NEW: pass the constraints here
                 values = _gaussian_acquisition(
-                    X=X, model=est, constraint_pof=self.constraint_model,
+                    X=X, model=est, constraint_pof=self.constraint_model_list,
                     y_opt=np.min(self.yi),
                     acq_func=self.acq_func,
                     acq_func_kwargs=self.acq_func_kwargs)
-                #print("got the following values: ", values)
                 # Find the minimum of the acquisition function by randomly
                 # sampling points from the space
                 next_x = X[np.argmin(values)]
@@ -487,7 +482,7 @@ class Optimizer(object):
 
             elif self.acq_optimizer == "bfgs":
                 n_seeds = 10
-                from entmoot.optimizer.bfgs_minimize import bfgs_max_acq
+                from entmoot.optimizer.blackbox_optimize import bfgs_max_acq
                 X = self.space.transform(self.space.rvs(
                     n_samples=self.n_points, random_state=self.rng))
                 X_seeds = self.space.transform(self.space.rvs(
@@ -495,14 +490,14 @@ class Optimizer(object):
                 next_x, model_mu, model_std = bfgs_max_acq(X_tries=X,
                                                            X_seeds=X_seeds,
                                                            model=est,
-                                                           constraint_pof=self.constraint_model,
+                                                           constraint_pof=self.constraint_model_list,
                                                            y_opt=np.min(self.yi),
                                                            acq_func=self.acq_func,
                                                            space=self.space,
                                                            acq_func_kwargs=self.acq_func_kwargs
                                                            )
             else:
-                raise ValueError("OPtimization strategy not supported. Must be in [sampling, global, bfgs]")
+                raise ValueError("Optimization strategy not supported. Must be in [sampling, global, bfgs]")
 
             # note the need for [0] at the end
             self._next_x = self.space.inverse_transform(

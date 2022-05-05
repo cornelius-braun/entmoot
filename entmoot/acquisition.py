@@ -38,11 +38,12 @@ import numpy as np
 import warnings
 #import sys
 from scipy.stats import norm
+from typing import Optional
 
 def _gaussian_acquisition(X,
                           model,
                           y_opt=None,
-                          constraint_pof=None,
+                          constraint_pof: Optional[list] = None,
                           num_obj=1,
                           acq_func="LCB",
                           acq_func_kwargs=None):
@@ -191,16 +192,18 @@ def cw_ei(X, obj_y_opt, obj_model, pof=None):
     pof = prob_of_feasibility(X, pof) if pof is not None else 1.  # check if constraints are satisfied
     return ei * pof
 
-def prob_of_feasibility(X, model):
+def prob_of_feasibility(X, models):
     # idea: here we evaluate how likely it is that the constraint is met
     # i.e. given some data we check prob. of observing the desired value or smaller
     # only works for inequality constraints as of now (for equality it would just be pdf)
-    feas = model.predict(X)
-    #print(np.where(feas == True))
-    return feas
-    # when we want uncertainty
-    #mu, std = model.predict(X, return_std=True)
-    #return norm.cdf(mu, std)(threshold)
+
+    # loop over all models and predict the constraint surrogate
+    pof = 1.
+    for model in models:
+        mu, std = model.evaluate(X, return_std=True)
+        normal = norm(loc=mu, scale=std)
+        pof *= normal.cdf(model.rhs)    # multiply the cdf values
+    return pof
 
 def get_gamma(X, y_opt, model_uncertainty=None):
     if model_uncertainty is not None:
