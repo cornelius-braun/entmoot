@@ -78,7 +78,6 @@ def _gaussian_acquisition(X,
         if constraint_pof is None:
             raise ValueError("constraint_pof needs to be defined!")
         acq_vals = cw_ei(X, obj_model=model, obj_y_opt=y_opt, pof=constraint_pof)
-        print(acq_vals)
     else:
         raise ValueError("Acquisition function not implemented.")
 

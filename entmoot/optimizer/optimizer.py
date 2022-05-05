@@ -40,6 +40,7 @@ import numpy as np
 from lightgbm import LGBMClassifier
 
 from entmoot.acquisition import _gaussian_acquisition
+from entmoot.space import Categorical
 from entmoot.utils import list_push
 
 
@@ -123,7 +124,8 @@ class Optimizer(object):
         acq_optimizer_kwargs: Optional[dict] = None,
         base_estimator_kwargs: Optional[dict] = None,
         model_queue_size: Optional[int] = None,
-        verbose: bool = False
+        verbose: bool = False,
+        bb_cf: bool = False
     ):
 
         from entmoot.utils import cook_initial_point_generator
@@ -170,10 +172,16 @@ class Optimizer(object):
         self.num_obj = num_obj
 
         # create base_estimator
-        self.base_estimator_ = self._create_estimator(base_estimator, base_estimator_kwargs)
+        self.base_estimator_ = self._create_estimator(base_estimator, self.space, base_estimator_kwargs)
 
         # create constraint model
-        self.constraint_model = LGBMClassifier(verbose=-1)
+        self.bb_cf = bb_cf
+        if self.bb_cf:
+            # feasibility_space = Space([(True, False)])
+            # self.constraint_model = self._create_estimator("ENTING", feasibility_space, None)
+            self.constraint_model = LGBMClassifier(verbose=-1) # works
+        else:
+            self.constraint_model = None
 
         # Configure Optimizer
         self.acq_optimizer = acq_optimizer
@@ -407,7 +415,8 @@ class Optimizer(object):
             # estimator is fitted using a generic fit function
             est.fit(self.space.transform(self.Xi), self.yi)
             # fit constraint model
-            self.constraint_model.fit(self.Xi, np.array(self.yc).flatten())
+            if self.bb_cf:
+                self.constraint_model.fit(np.array(self.Xi), np.array(self.yc).flatten())
 
             # we cache the estimator in model_queue
             list_push(self.models, est, self.max_model_queue_size)
@@ -419,16 +428,15 @@ class Optimizer(object):
                 self.printed_switch_to_model = True
 
             # this code provides a heuristic solution that uses sampling as the optimization strategy
-            # TODO: can we use constraints here??
             if self.acq_optimizer == "sampling":
                 # sample a large number of points and then pick the best ones as
                 # starting points
                 X = self.space.transform(self.space.rvs(
                     n_samples=self.n_points, random_state=self.rng))
 
-                # TODO: we need to pass the constraint model here
-                res = self.constraint_model.predict(X)
-                print(res, self.yc)
+                # NEW: pass the constraint model here
+                # res = self.constraint_model.predict(np.array(self.Xi))
+                # print(res, self.yc)
                 values = _gaussian_acquisition(
                     X=X, model=est, constraint_pof=self.constraint_model,
                     y_opt=np.min(self.yi),
@@ -455,11 +463,11 @@ class Optimizer(object):
                     import gurobipy as gp
                 except ModuleNotFoundError:
                     ImportError("GurobiNotFoundError: "
-                          "To run `aqu_optimizer='global'` "
-                          "please install the Gurobi solver "
-                          "(https://www.gurobi.com/) and its interface "
-                          "gurobipy. "
-                          "Alternatively, change `aqu_optimizer='sampling'`.")
+                                "To run `aqu_optimizer='global'` "
+                                "please install the Gurobi solver "
+                                "(https://www.gurobi.com/) and its interface "
+                                "gurobipy. "
+                                "Alternatively, change `aqu_optimizer='sampling'`.")
 
                 if add_model_core is None:
                     add_model_core = \
@@ -476,6 +484,25 @@ class Optimizer(object):
                                                       gurobi_timelimit=self.gurobi_timelimit)
 
                 self.gurobi_mipgap.append(gurobi_mipgap)
+
+            elif self.acq_optimizer == "bfgs":
+                n_seeds = 10
+                from entmoot.optimizer.bfgs_minimize import bfgs_max_acq
+                X = self.space.transform(self.space.rvs(
+                    n_samples=self.n_points, random_state=self.rng))
+                X_seeds = self.space.transform(self.space.rvs(
+                    n_samples=n_seeds, random_state=self.rng))
+                next_x, model_mu, model_std = bfgs_max_acq(X_tries=X,
+                                                           X_seeds=X_seeds,
+                                                           model=est,
+                                                           constraint_pof=self.constraint_model,
+                                                           y_opt=np.min(self.yi),
+                                                           acq_func=self.acq_func,
+                                                           space=self.space,
+                                                           acq_func_kwargs=self.acq_func_kwargs
+                                                           )
+            else:
+                raise ValueError("OPtimization strategy not supported. Must be in [sampling, global, bfgs]")
 
             # note the need for [0] at the end
             self._next_x = self.space.inverse_transform(
@@ -785,7 +812,7 @@ class Optimizer(object):
             pareto.append((temp_x, temp_mu))
         return pareto
 
-    def _create_estimator(self, estimator, estimator_kwargs):
+    def _create_estimator(self, estimator, space, estimator_kwargs):
         # create base_estimator
         self.base_estimator_kwargs = {} if estimator_kwargs is None else estimator_kwargs
 
@@ -804,7 +831,7 @@ class Optimizer(object):
 
                 # build base_estimator
                 base_estimator = cook_estimator(
-                    self.space,
+                    space,
                     estimator,
                     self.base_estimator_kwargs,
                     num_obj=self.num_obj,

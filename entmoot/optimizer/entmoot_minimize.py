@@ -408,7 +408,7 @@ def entmoot_minimize(
 
     return result
 
-def minimize_blackbox(func,
+def entmoot_blackbox(func,
     dimensions,
     const_func,
     n_calls=60,
@@ -483,7 +483,8 @@ def minimize_blackbox(func,
         acq_optimizer_kwargs=acq_optimizer_kwargs,
         base_estimator_kwargs=base_estimator_kwargs,
         model_queue_size=model_queue_size,
-        verbose=verbose
+        verbose=verbose,
+        bb_cf=True
     )
 
     # Record provided points
@@ -493,8 +494,6 @@ def minimize_blackbox(func,
     # evaluate y0 if only x0 is provided
     if x0 and y0 is None:
         y0 = list(map(func, x0))
-        # TODO: put in feasibility y's right here
-        y_feas = list(map(const_func, x0))
         n_calls -= len(y0)
     # record through tell function
     if x0:
