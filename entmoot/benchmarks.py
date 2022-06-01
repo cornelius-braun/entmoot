@@ -1,3 +1,4 @@
+# TODO: credits
 """Different benchmark problems for testing"""
 
 import numpy as np
@@ -52,6 +53,18 @@ class Rosenbrock(BenchmarkFunction):
         add1 = sum( (1.0 - X0)**2.0 )
         add2 = 100.0 * sum( (X1 - X0**2.0)**2.0 )
         return add1 + add2
+
+class Parabola(BenchmarkFunction):
+    def __init__(self, func_config={}):
+        self.name = 'parabola'
+        self.func_config = func_config
+
+    def get_bounds(self, n_dim=1):
+        return [(-2.048, 2.048) for _ in range(n_dim)]
+
+    def _eval_point(self, X):
+        X = np.asarray_chkfinite(X)
+        return np.sum(X**2)
 
 class SimpleCat(BenchmarkFunction):
 
