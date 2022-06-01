@@ -72,13 +72,13 @@ def _gaussian_acquisition(X,
         if y_opt is None:
             raise ValueError("y_opt cannot needs to have a value!")
         print("best y:", y_opt)
-        acq_vals = expected_improvement(X, model, y_opt=y_opt)
+        acq_vals = -expected_improvement(X, model, y_opt=y_opt)               # needs to be inverted for minimization
     elif acq_func == "CWEI":
         if y_opt is None:
             raise ValueError("y_opt needs to have a value!")
         if constraint_pof is None:
             raise ValueError("constraint_pof needs to be defined!")
-        acq_vals = cw_ei(X, obj_model=model, obj_y_opt=y_opt, pof=constraint_pof)
+        acq_vals = -cw_ei(X, obj_model=model, obj_y_opt=y_opt, pof=constraint_pof) # needs to be inverted for minimization
     else:
         raise ValueError("Acquisition function not implemented.")
 
@@ -158,9 +158,14 @@ def expected_improvement(X, model, y_opt):
         warnings.simplefilter("ignore")
 
         mu, std = model.predict(X, return_std=True)
-        gamma = get_gamma(mu, y_opt, std)
 
-        return std * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
+        values = np.zeros_like(mu)
+        mask = std > 0
+        gamma = get_gamma(mu[mask], y_opt, std[mask])
+        improvement = std[mask] * (gamma * norm.cdf(gamma) + norm.pdf(gamma))
+        values[mask] = improvement
+
+        return values
 
 def cw_ei(X, obj_y_opt, obj_model, pof=None):
     """
@@ -189,9 +194,10 @@ def cw_ei(X, obj_y_opt, obj_model, pof=None):
     if pof is None:
         raise ValueError("Constraint probabilities are not defined")
 
-    ei = expected_improvement(X, obj_model, obj_y_opt)
+    ei = expected_improvement(X, obj_model, obj_y_opt) # gaussian_lcb(X, obj_model) # -
     pof = prob_of_feasibility(X, pof)
-    return ei * pof
+    cwei = ei * pof
+    return cwei
 
 def prob_of_feasibility(X, models):
     # idea: here we evaluate how likely it is that the constraint is met
@@ -208,9 +214,9 @@ def prob_of_feasibility(X, models):
 
 def get_gamma(X, y_opt, model_uncertainty=None):
     if model_uncertainty is not None:
-        gamma = (X - y_opt) / model_uncertainty
+        gamma = (y_opt - X) / model_uncertainty
     else:
-        gamma = X - y_opt
+        gamma = y_opt - X
     return gamma
 
 def bfgs_max_acq(X_tries,
@@ -225,7 +231,8 @@ def bfgs_max_acq(X_tries,
                  ):
 
     # define proxy for acquisition
-    acquisition_fct = lambda X: _gaussian_acquisition(X=X, model=model, y_opt=y_opt, constraint_pof=constraint_pof,
+    def acquisition_fct(X):
+        return _gaussian_acquisition(X=X, model=model, y_opt=y_opt, constraint_pof=constraint_pof,
                                                       num_obj=num_obj, acq_func=acq_func,
                                                       acq_func_kwargs=acq_func_kwargs)
 

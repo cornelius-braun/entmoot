@@ -11,7 +11,7 @@ def plotfx_1d(obj_f, surrogate_f, evaluated_points=None, next_x=None, const_f=No
 
     # evaluate
     Z = obj_f(X)
-    Z_surrogate = predict_trained_est(surrogate_f, X, return_std=False) # TODO: use map here
+    Z_surrogate = predict_trained_est(surrogate_f, X, return_std=False)
     if const_f is not None:
         Zc = const_f(X)
         mask = Zc >= 0

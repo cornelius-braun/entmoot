@@ -53,7 +53,7 @@ def entmoot_minimize(
     batch_size=None,
     batch_strategy="cl_mean",
     n_points=10000,
-    base_estimator="GBRT",
+    base_estimator="ENTING",
     n_initial_points=50, 
     initial_point_generator="random",
     acq_func="LCB", 
@@ -383,7 +383,7 @@ def entmoot_minimize(
         # print best obj until (not including) current iteration
         print(f"   best obj.:       {round(best_fun, 5)}")
 
-        # plot objective function
+        # plot objective function -- only possible after at least 2 iters to fit the model
         if plot and optimizer.num_obj == 1 and itr > 2:
             n_dim = len(dimensions)
             if n_dim == 1:

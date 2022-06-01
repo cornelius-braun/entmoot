@@ -213,7 +213,7 @@ def bb_constraints_minimize(
         print(f"   best obj.:       {round(best_fun, 5)}")
 
         # plot objective function
-        if plot and optimizer.num_obj == 1:
+        if plot and optimizer.num_obj == 1 and itr > 2:
             n_dim = len(dimensions)
             if n_dim == 1:
                 est = optimizer.base_estimator_

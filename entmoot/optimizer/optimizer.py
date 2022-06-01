@@ -483,6 +483,7 @@ class Optimizer(object):
                 self.gurobi_mipgap.append(gurobi_mipgap)
 
             elif self.acq_optimizer == "bfgs":
+                # NEW: bfgs optimization; works badly
                 n_seeds = 10
                 X = self.space.transform(self.space.rvs(
                     n_samples=self.n_points, random_state=self.rng))

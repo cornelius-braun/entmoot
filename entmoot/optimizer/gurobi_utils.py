@@ -273,8 +273,8 @@ def add_acq_to_gurobi_model(model, model_mu, model_unc,
 
         #cdf_approx = (gamma <= 0).sum() / gamma.shape[0]                            # todo: find out how to get mu
         #pof_approx = (proc_mu <= model.getConstrs()[0].RHS).sum() / gamma.shape[0]  # todo: get threshold from constraint
-        pof_approx = model_mu * est.yc
-        lcb = quicksum((proc_mu, kappa * model_unc))
+        #pof_approx = model_mu * est.yc
+        #lcb = quicksum((proc_mu, kappa * model_unc))
         ob_expr = lcb * pof_approx   # model_unc * (gamma * cdf_approx + norm.pdf(gamma))
         model.setObjective(ob_expr, GRB.MINIMIZE)
 

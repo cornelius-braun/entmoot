@@ -165,7 +165,7 @@ class EntingRegressor:
         from entmoot.learning.lgbm_processing import order_tree_model_dict
         from entmoot.learning.gbm_model import GbmModel
         gbm_model_dict = {}
-        for i,tree in enumerate(self.regressor_):
+        for i, tree in enumerate(self.regressor_):
             original_tree_model_dict = tree._Booster.dump_model()
 
             # import json
