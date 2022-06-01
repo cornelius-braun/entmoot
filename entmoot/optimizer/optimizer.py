@@ -39,7 +39,7 @@ from numbers import Number
 import numpy as np
 
 from entmoot.acquisition import _gaussian_acquisition, bfgs_max_acq
-from entmoot.learning.tree_model import EntingConstraintModel
+from entmoot.learning.constraint import UnknownConstraintModel
 from entmoot.utils import list_push
 
 
@@ -116,7 +116,7 @@ class Optimizer(object):
         n_initial_points: int = 50,
         initial_point_generator: str = "random",
         num_obj: int = 1,
-        bb_constr_rhs: Optional[list] = None,
+        bb_constraints: Optional[list] = None,
         acq_func: str = "LCB",
         acq_optimizer: str = "global",
         random_state: Optional[int] = None,
@@ -175,10 +175,10 @@ class Optimizer(object):
 
         # create constraint models
         self.constraint_model_list = []
-        if bb_constr_rhs is not None:
-            for constraint_rhs in bb_constr_rhs:
+        if bb_constraints is not None:
+            for constraint_rhs in bb_constraints:
                 constraint_regressor = self._create_estimator("ENTING", self.space, base_estimator_kwargs)
-                constraint_model = EntingConstraintModel(constraint_regressor, constraint_rhs)
+                constraint_model = UnknownConstraintModel(constraint_regressor, constraint_rhs)
                 self.constraint_model_list.append(constraint_model)
 
         self.num_cons = len(self.constraint_model_list)

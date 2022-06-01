@@ -3,7 +3,8 @@ import copy
 import inspect
 import numbers
 from entmoot.optimizer.optimizer import Optimizer
-from entmoot.utils import plotfx_2d
+from entmoot.plot import plotfx_1d, plotfx_2d
+from entmoot.utils import get_verbosity
 from typing import List
 
 try:
@@ -40,10 +41,10 @@ class BlackBoxConstraint:
         X0 = np.reshape(X, (-1, self.n_dim))
         return float(self.evaluator(X0))
 
-def entmoot_blackbox(
+def bb_constraints_minimize(
     func,
     dimensions,
-    constraints: List[BlackBoxConstraint] = None,
+    bb_constraints: List[BlackBoxConstraint] = None,
     n_calls=60,
     batch_size=None,
     batch_strategy="cl_mean",
@@ -63,8 +64,9 @@ def entmoot_blackbox(
     verbose=False,
     plot=False
 ):
-    if constraints is None:
-        raise ValueError("No constraints have been specified. Please specify constraints or use 'entmoot_minimize'")
+    # TODO: docstring
+    if bb_constraints is None:
+        raise ValueError("No black box constraints have been specified. Please specify constraints or use 'entmoot_minimize'")
 
     specs = {"args": copy.copy(inspect.currentframe().f_locals),
              "function": inspect.currentframe().f_code.co_name}
@@ -102,9 +104,8 @@ def entmoot_blackbox(
 
     # get the constraint r
     rhs_list = []
-    for constraint in constraints:
+    for constraint in bb_constraints:
         rhs_list.append(constraint.rhs)
-    print(rhs_list)
 
     # check dims
     if plot and len(dimensions) > 2:
@@ -118,6 +119,7 @@ def entmoot_blackbox(
         base_estimator=base_estimator,
         n_initial_points=n_initial_points,
         initial_point_generator=initial_point_generator,
+        bb_constraints=rhs_list,
         acq_func=acq_func,
         acq_optimizer=acq_optimizer,
         random_state=random_state,
@@ -125,8 +127,7 @@ def entmoot_blackbox(
         acq_optimizer_kwargs=acq_optimizer_kwargs,
         base_estimator_kwargs=base_estimator_kwargs,
         model_queue_size=model_queue_size,
-        verbose=verbose,
-        bb_constr_rhs=rhs_list
+        verbose=verbose
     )
 
     # Record provided points
@@ -145,24 +146,12 @@ def entmoot_blackbox(
         if len(x0) != len(y0):
             raise ValueError("`x0` and `y0` should have the same length")
         # FIXME: this needs testing!!!
-        y_feas = [constraint.evaluate(x0) for constraint in constraints]
+        y_feas = [constraint.evaluate(x0) for constraint in bb_constraints]
         result = optimizer.tell(x0, y0, const_y=y_feas)
         result.specs = specs
 
     # Handle solver output
-    if not isinstance(verbose, (int, type(None))):
-        raise TypeError("verbose should be an int of [0,1,2] or bool, "
-                        "got {}".format(type(verbose)))
-
-    if isinstance(verbose, bool):
-        if verbose:
-            verbose = 1
-        else:
-            verbose = 0
-    elif isinstance(verbose, int):
-        if verbose not in [0, 1, 2]:
-            raise TypeError("if verbose is int, it should in [0,1,2], "
-                            "got {}".format(verbose))
+    verbose = get_verbosity(verbose)
 
     # Optimize
     _n_calls = n_calls
@@ -177,6 +166,7 @@ def entmoot_blackbox(
 
     while _n_calls > 0:
 
+        # Ask
         # check if optimization is performed in batches
         if batch_size is not None:
             _batch_size = min([_n_calls, batch_size])
@@ -188,7 +178,7 @@ def entmoot_blackbox(
 
         # get next value of objective and constraint surrogates
         next_y = func(next_x)
-        next_const = [constraint.evaluate(next_x) for constraint in constraints]
+        next_const = [constraint.evaluate(next_x) for constraint in bb_constraints] # check this for speed: https://stackoverflow.com/questions/11736407/apply-list-of-functions-on-an-object-in-python
 
         # first iteration uses next_y as best point instead of min of next_y
         if itr == 1:
@@ -221,22 +211,28 @@ def entmoot_blackbox(
 
         # print best obj until (not including) current iteration
         print(f"   best obj.:       {round(best_fun, 5)}")
+
         # plot objective function
         if plot and optimizer.num_obj == 1:
-            plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
+            n_dim = len(dimensions)
+            if n_dim == 1:
+                est = optimizer.base_estimator_
+                est.fit(optimizer.space.transform(optimizer.Xi), optimizer.yi)
+                plotfx_1d(obj_f=func, surrogate_f=est, evaluated_points=optimizer.Xi, next_x=next_x)
+            elif n_dim == 2:
+                plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
 
-        itr += 1
 
+        # tell next
         optimizer.tell(
             next_x, next_y, next_const,
             fit=batch_size is None and not _n_calls <= 0
         )
 
         result = optimizer.get_result()
-
         best_fun = result.fun
-
         result.specs = specs
+        itr += 1
 
     # print end of solve once convergence criteria is met
     if verbose > 0:

@@ -393,27 +393,3 @@ class MisicRegressor(EntingRegressor):
 
         # update std estimator
         self.std_estimator.update(X, y, gbm_model, cat_column=self.cat_idx)
-
-# TODO: maybe make this a child class of Enting regressor
-class EntingConstraintModel:
-    """Predict value of constraint surrogate and store the RHS of the constraint
-
-        Parameters
-        ----------
-        base_estimator : EntingRegressor instance.
-        RHS : float
-            Right-hand side of a constraint of the shape <= RHS.
-            # TODO: extend this later to also work with equality constraints
-        """
-
-    def __init__(self,
-                 base_estimator: EntingRegressor,
-                 rhs: int):
-        self.model = base_estimator
-        self.rhs = rhs
-
-    def evaluate(self, X, return_std=True):
-        return self.model.predict(X, return_std=return_std)
-
-    def fit(self, X, y):
-        return self.model.fit(X, y)

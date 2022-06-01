@@ -35,7 +35,7 @@ Copyright (c) 2019-2020 Alexander Thebelt.
 """
 
 from entmoot.optimizer.optimizer import Optimizer
-from entmoot.utils import plotfx_2d
+from entmoot.plot import plotfx_2d, plotfx_1d
 
 import copy
 import inspect
@@ -382,9 +382,16 @@ def entmoot_minimize(
 
         # print best obj until (not including) current iteration
         print(f"   best obj.:       {round(best_fun, 5)}")
+
         # plot objective function
-        if plot and optimizer.num_obj==1:
-            plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
+        if plot and optimizer.num_obj == 1 and itr > 2:
+            n_dim = len(dimensions)
+            if n_dim == 1:
+                est = optimizer.base_estimator_
+                est.fit(optimizer.space.transform(optimizer.Xi), optimizer.yi)
+                plotfx_1d(obj_f=func, surrogate_f=est, evaluated_points=optimizer.Xi, next_x=next_x)
+            elif n_dim == 2:
+                plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
 
         itr += 1
 

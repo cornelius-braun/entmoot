@@ -186,10 +186,11 @@ def cw_ei(X, obj_y_opt, obj_model, pof=None):
     values : array-like, shape (X.shape[0],)
         Acquisition function values computed at X.
     """
-    #if pof is None:
-    #    raise ValueError("Constraint probabilities are not defined")
+    if pof is None:
+        raise ValueError("Constraint probabilities are not defined")
+
     ei = expected_improvement(X, obj_model, obj_y_opt)
-    pof = prob_of_feasibility(X, pof) if pof is not None else 1.  # check if constraints are satisfied
+    pof = prob_of_feasibility(X, pof)
     return ei * pof
 
 def prob_of_feasibility(X, models):
@@ -202,7 +203,7 @@ def prob_of_feasibility(X, models):
     for model in models:
         mu, std = model.evaluate(X, return_std=True)
         normal = norm(loc=mu, scale=std)
-        pof *= normal.cdf(model.rhs)    # multiply the cdf values
+        pof *= normal.cdf(model.rhs)    # multiply the cdf values to get overall pof at each point
     return pof
 
 def get_gamma(X, y_opt, model_uncertainty=None):

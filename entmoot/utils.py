@@ -35,6 +35,7 @@ Copyright (c) 2019-2020 Alexander Thebelt.
 """
 
 import os
+from copy import deepcopy
 from typing import Optional
 from entmoot.space.space import Space
 from gurobipy import Env
@@ -284,7 +285,7 @@ def is_listlike(x):
 
 
 def is_2Dlistlike(x):
-    return np.all([is_listlike(xi) for xi in x])
+    return np.all([is_listlike(xi) for xi in x]) or (isinstance(x, np.ndarray) and len(x.shape) == 2)
 
 
 def check_x_in_space(x, space):
@@ -460,38 +461,6 @@ def normalize_dimensions(dimensions):
 
     return Space(transformed_dimensions)
 
-# Plot
-def plotfx_2d(obj_f, evaluated_points=None, next_x=None, const_f=None):
-    # get data
-    bounds = obj_f.get_bounds()
-    X = get_meshgrid([100]*len(bounds), bounds)
-
-    # evaluate
-    Zo = obj_f(X)
-    Z = Zo
-    if const_f is not None:
-        Zc = const_f(X)
-        mask = Zc >= 0
-        Zc[mask] = np.nan
-        Zc[np.logical_not(mask)] = 1
-        Z *= Zc
-
-    f, axes = plt.subplots(1, 1, figsize=(7, 5))
-    axes.contourf(X[0].flatten(), X[1].flatten(), Z)
-    axes.set_xlabel('x1')
-    axes.set_ylabel('x2')
-    axes.set_xlim([bounds[0][0], bounds[0][1]])
-    axes.set_ylim([bounds[1][0], bounds[1][1]])
-
-    # plot evaluations
-    if evaluated_points is not None and len(evaluated_points) > 0:
-        X = np.array(evaluated_points).T
-        axes.scatter(*X, marker="+", color="blue")
-        axes.scatter(*next_x, marker="x", color="red")
-
-    f.suptitle("Objective function")
-    f.show()
-
 def get_meshgrid(list_number_points_per_axis, dataset_bounds):
     list_grid_points = []
     for index_axis, (x_min, x_max) in enumerate(dataset_bounds):
@@ -505,3 +474,39 @@ def list_push(list, item, max_queue_size=None):
         # Maximum list size obtained, remove oldest model.
         list.pop(0)
         list.append(item)
+
+def get_verbosity(verbose=0):
+    if not isinstance(verbose, (int, type(None))):
+        raise TypeError("verbose should be an int of [0,1,2] or bool, "
+                        "got {}".format(type(verbose)))
+
+    if isinstance(verbose, bool):
+        if verbose:
+            verbose = 1
+        else:
+            verbose = 0
+    elif isinstance(verbose, int):
+        if verbose not in [0, 1, 2]:
+            raise TypeError("if verbose is int, it should in [0,1,2], "
+                            "got {}".format(verbose))
+
+    return verbose
+
+def predict_trained_est(est, x, return_std=True):
+    next_x = np.asarray(x).reshape(-1, 1)
+
+    temp_mu, temp_std = \
+        est.predict(
+            X=next_x,
+            return_std=True)
+
+    if is_2Dlistlike(x):
+        if return_std:
+            return temp_mu, temp_std
+        else:
+            return temp_mu
+    else:
+        if return_std:
+            return temp_mu[0], temp_std[0]
+        else:
+            return temp_mu[0]
