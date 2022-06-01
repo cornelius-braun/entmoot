@@ -79,6 +79,10 @@ def _gaussian_acquisition(X,
         if constraint_pof is None:
             raise ValueError("constraint_pof needs to be defined!")
         acq_vals = -cw_ei(X, obj_model=model, obj_y_opt=y_opt, pof=constraint_pof) # needs to be inverted for minimization
+    elif acq_func == "CWLCB":
+        if constraint_pof is None:
+            raise ValueError("constraint_pof needs to be defined!")
+        acq_vals = -cw_lcb(X, obj_model=model, pof=constraint_pof, kappa=kappa)    # needs to be inverted for minimization
     else:
         raise ValueError("Acquisition function not implemented.")
 
@@ -198,6 +202,37 @@ def cw_ei(X, obj_y_opt, obj_model, pof=None):
     pof = prob_of_feasibility(X, pof)
     cwei = ei * pof
     return cwei
+
+def cw_lcb(X, obj_model, pof, kappa=1.96):
+    """
+    Use the constraint weighted lower confidence bound
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features)
+        Values where the acquisition function should be computed.
+    obj_y_opt : array-like, shape (1, n_features)
+        The best function value that was found so far.
+    obj_model : sklearn estimator of the objective function that implements predict with ``return_std``
+        The fit estimator that approximates the objective function through the
+        method ``predict``.
+        It should have a ``return_std`` parameter that returns the standard
+        deviation.
+    constraint_model : sklearn estimator that implements predict
+        The fit estimator that approximates the constraint function through the method ``predict``.
+
+    Returns
+    -------
+    values : array-like, shape (X.shape[0],)
+        Acquisition function values computed at X.
+    """
+    if pof is None:
+        raise ValueError("Constraint probabilities are not defined")
+
+    lcb = gaussian_lcb(X, obj_model, kappa=kappa)
+    pof = prob_of_feasibility(X, pof)
+    cw_lcb = lcb * pof
+    return cw_lcb
 
 def prob_of_feasibility(X, models):
     # idea: here we evaluate how likely it is that the constraint is met
