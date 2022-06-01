@@ -213,12 +213,14 @@ def bb_constraints_minimize(
         print(f"   best obj.:       {round(best_fun, 5)}")
 
         # plot objective function
-        if plot and optimizer.num_obj == 1 and itr > 2:
+        if plot and optimizer.num_obj == 1 and itr > n_initial_points:
             n_dim = len(dimensions)
             if n_dim == 1:
                 est = optimizer.base_estimator_
                 est.fit(optimizer.space.transform(optimizer.Xi), optimizer.yi)
-                plotfx_1d(obj_f=func, surrogate_f=est, evaluated_points=optimizer.Xi, next_x=next_x)
+                evaluated_points = optimizer.Xi
+                evaluated_points = evaluated_points[n_initial_points:]  # plot only points that are not init. random
+                plotfx_1d(obj_f=func, surrogate_f=est, evaluated_points=evaluated_points, next_x=next_x)
             elif n_dim == 2:
                 plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
 

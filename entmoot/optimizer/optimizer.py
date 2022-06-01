@@ -140,7 +140,7 @@ class Optimizer(object):
         else:
             self.acq_func_kwargs = acq_func_kwargs
 
-        allowed_acq_funcs = ["LCB", "HLCB", "EI", "CWEI"]
+        allowed_acq_funcs = ["LCB", "HLCB", "EI", "CWEI", "CWLCB"]
         if self.acq_func not in allowed_acq_funcs:
             raise ValueError("expected acq_func to be in %s, got %s" %
                              (",".join(allowed_acq_funcs), self.acq_func))

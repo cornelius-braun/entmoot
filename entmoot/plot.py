@@ -11,7 +11,7 @@ def plotfx_1d(obj_f, surrogate_f, evaluated_points=None, next_x=None, const_f=No
 
     # evaluate
     Z = obj_f(X)
-    Z_surrogate = predict_trained_est(surrogate_f, X, return_std=False)
+    Z_surrogate, std = predict_trained_est(surrogate_f, X, return_std=True)
     if const_f is not None:
         Zc = const_f(X)
         mask = Zc >= 0
@@ -21,12 +21,15 @@ def plotfx_1d(obj_f, surrogate_f, evaluated_points=None, next_x=None, const_f=No
 
     f, axes = plt.subplots(1, 1, figsize=(7, 5))
     axes.plot(X.flatten(), Z)
-    axes.plot(X.flatten(), Z_surrogate)
+    axes.plot(X.flatten(), Z_surrogate, c="orange")
+    axes.fill_between(X.flatten(), Z_surrogate - 5*std, Z_surrogate + 5*std, alpha=0.3, facecolor="orange")
     axes.set_xlabel('x')
     axes.set_ylabel('y')
 
     # plot evaluations
     if evaluated_points is not None and len(evaluated_points) > 0:
+        X = np.array(evaluated_points).reshape(-1, 1)
+        axes.scatter(X, obj_f(X), color="blue", marker="x")
         axes.axvline(next_x, color="red")
 
     f.suptitle("Objective function")
