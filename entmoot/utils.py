@@ -306,7 +306,7 @@ def check_x_in_space(x, space):
                              % (x, space.bounds))
 
 def create_result(Xi, yi, space=None, rng=None, specs=None, models=None,
-                    model_mu=None, model_std=None, gurobi_mipgap=None):
+                    model_mu=None, model_std=None, gurobi_mipgap=None, constraint_models=None):
     """
     Initialize an `OptimizeResult` object.
 
@@ -352,6 +352,7 @@ def create_result(Xi, yi, space=None, rng=None, specs=None, models=None,
     res.space = space
     res.random_state = rng
     res.specs = specs
+    res.constraint_models = constraint_models
     return res
 
 def dump(res, filename, store_objective=True, **kwargs):

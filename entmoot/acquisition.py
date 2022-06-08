@@ -82,7 +82,7 @@ def _gaussian_acquisition(X,
     elif acq_func == "CWLCB":
         if constraint_pof is None:
             raise ValueError("constraint_pof needs to be defined!")
-        acq_vals = -cw_lcb(X, obj_model=model, pof=constraint_pof, kappa=kappa)    # needs to be inverted for minimization
+        acq_vals = cw_lcb(X, obj_model=model, pof=constraint_pof, kappa=kappa)    # needs to be inverted for minimization
     else:
         raise ValueError("Acquisition function not implemented.")
 

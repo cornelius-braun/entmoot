@@ -680,7 +680,8 @@ class Optimizer(object):
                                models=self.models, 
                                model_mu=self.model_mu,
                                model_std=self.model_std,
-                               gurobi_mipgap=self.gurobi_mipgap)
+                               gurobi_mipgap=self.gurobi_mipgap,
+                               constraint_models=self.constraint_model_list)
         return result
 
     def predict_with_est(self, x, return_std=True):

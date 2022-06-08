@@ -2,6 +2,7 @@ import numpy as np
 import copy
 import inspect
 import numbers
+from entmoot.learning.constraint import BlackBoxConstraint
 from entmoot.optimizer.optimizer import Optimizer
 from entmoot.plot import plotfx_1d, plotfx_2d
 from entmoot.utils import get_verbosity
@@ -11,35 +12,6 @@ try:
     from collections.abc import Iterable
 except ImportError:
     from collections import Iterable
-
-class BlackBoxConstraint:
-    """
-    Base class to formulate back box constraints.
-    Every class object specifies a constraint of the shape 'evaluator' <= 'rhs'.
-
-    Parameters
-    ----------
-    n_dim : int,
-        number of dimensions that we operate in.
-
-    evaluator : function, -> float
-        the left-hand side of the constraint. Can be any function that maps to R.
-
-    rhs : float,
-        right-hand side of a less-than constraint.
-    """
-    def __init__(self,
-                 n_dim: int,
-                 evaluator,
-                 rhs: int
-                 ):
-        self.n_dim = n_dim
-        self.evaluator = evaluator
-        self.rhs = rhs
-
-    def evaluate(self, X):
-        X0 = np.reshape(X, (-1, self.n_dim))
-        return float(self.evaluator(X0))
 
 def bb_constraints_minimize(
     func,
@@ -210,6 +182,7 @@ def bb_constraints_minimize(
                 print(f"   new point obj.: {round(next_y, 5)}")
 
         # print best obj until (not including) current iteration
+        # if verbose > 0:
         print(f"   best obj.:       {round(best_fun, 5)}")
 
         # plot objective function

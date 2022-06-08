@@ -53,15 +53,15 @@ def plotfx_2d(obj_f, evaluated_points=None, next_x=None, const_f=None):
 
     f, axes = plt.subplots(1, 1, figsize=(7, 5))
     axes.contourf(X[0].flatten(), X[1].flatten(), Z)
-    axes.set_xlabel('x1')
-    axes.set_ylabel('x2')
+    axes.set_xlabel('x0')
+    axes.set_ylabel('x1')
     axes.set_xlim([bounds[0][0], bounds[0][1]])
     axes.set_ylim([bounds[1][0], bounds[1][1]])
 
     # plot evaluations
     if evaluated_points is not None and len(evaluated_points) > 0:
-        X = np.array(evaluated_points).T
-        axes.scatter(*X, marker="+", color="blue")
+        X = np.array(evaluated_points).reshape(-1, 2)
+        axes.scatter(*X, marker="+", color="yellow")
         axes.scatter(*next_x, marker="x", color="red")
 
     f.suptitle("Objective function")

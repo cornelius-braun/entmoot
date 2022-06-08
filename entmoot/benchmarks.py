@@ -150,3 +150,16 @@ class RosenbrockMulti(BenchmarkFunction):
         add1 = sum( (1.0 - X0)**2.0 )
         add2 = 100.0 * sum( (X1 - X0**2.0)**2.0 )
         return add1 + add2, add2*5/add1
+
+
+class Periodic(BenchmarkFunction):
+    def __init__(self, func_config={}):
+        self.name = 'periodic'
+        self.func_config = func_config
+
+    def get_bounds(self, n_dim=1):
+        return [(-20.48, 20.48) for _ in range(n_dim)]
+
+    def _eval_point(self, X):
+        X = np.asarray_chkfinite(X).sum()
+        return np.sin(X) + np.sin((10. / 3.) * X)
