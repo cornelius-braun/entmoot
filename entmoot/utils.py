@@ -170,6 +170,12 @@ def cook_estimator(
                                     random_state=random_state,
                                     cat_idx=cat_idx)
 
+        # TODO: Mondrian Forests here?
+        elif ensemble_type == "MF":
+            from entmoot.learning.tree_model import LGBMBoostingQuantileRegressor, MondrianForestRegressor
+            base_estimator = MondrianForestRegressor() #LGBMBoostingQuantileRegressor()
+
+
     if base_estimator_kwargs is not None:
         base_estimator.set_params(**lgbm_params)
 
