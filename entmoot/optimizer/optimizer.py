@@ -177,7 +177,7 @@ class Optimizer(object):
         self.constraint_model_list = []
         if bb_constraints is not None:
             for constraint_rhs in bb_constraints:
-                constraint_regressor = self._create_estimator("ENTING", self.space, base_estimator_kwargs)
+                constraint_regressor = self._create_estimator(base_estimator, self.space, base_estimator_kwargs)
                 constraint_model = UnknownConstraintModel(constraint_regressor, constraint_rhs)
                 self.constraint_model_list.append(constraint_model)
 
