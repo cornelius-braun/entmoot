@@ -170,10 +170,17 @@ def cook_estimator(
                                     random_state=random_state,
                                     cat_idx=cat_idx)
 
-        # TODO: Mondrian Forests here?
+        # TODO: make sure we are using sampling based optimization
         elif ensemble_type == "MF":
-            from entmoot.learning.tree_model import MondrianForestRegressor
-            base_estimator = MondrianForestRegressor()
+            from entmoot.learning.mondrian import MondrianForestRegressor
+            mf = []
+            for _ in range(num_obj):
+                mf.append( MondrianForestRegressor(std_type="ensembling"))
+            base_estimator = tree_reg(space,
+                                      mf,
+                                      unc_estimator,
+                                      random_state=random_state,
+                                      cat_idx=cat_idx)
 
 
     if base_estimator_kwargs is not None:

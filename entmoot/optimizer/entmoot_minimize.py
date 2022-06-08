@@ -389,11 +389,9 @@ def entmoot_minimize(
             if n_dim == 1:
                 est = optimizer.base_estimator_
                 est.fit(optimizer.space.transform(optimizer.Xi), optimizer.yi)
-                evaluated_points = optimizer.Xi
-                evaluated_points = evaluated_points[n_initial_points:]  # plot only points that are not init. random
-                plotfx_1d(obj_f=func, surrogate_f=est, evaluated_points=evaluated_points, next_x=next_x)
+                plotfx_1d(obj_f=func, surrogate_f=est, evaluated_points=optimizer.Xi, next_x=next_x, n_init=n_initial_points)
             elif n_dim == 2:
-                plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x)
+                plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x, n_init=n_initial_points)
 
         itr += 1
 
