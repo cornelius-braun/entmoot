@@ -1,8 +1,132 @@
 from gurobipy import GRB, quicksum
 import gurobipy as gp
 import numpy as np
-from scipy.stats import norm
-from entmoot.acquisition import get_gamma
+
+
+def get_next_x_constraints(obj_surrogate,
+                           acq_func,
+                           acq_func_kwargs,
+                           acq_optimizer_kwargs,
+                           add_model_core,
+                           weight,
+                           verbose,
+                           gurobi_env,
+                           gurobi_timelimit,
+                           const_surrogate=None,
+                           has_unc=True):
+
+    # suppress  output to command window
+    import logging
+    logger = logging.getLogger()
+    logger.setLevel(logging.CRITICAL)
+
+    # start building model
+    gurobi_model = \
+        get_core_gurobi_model(
+            obj_surrogate.space, add_model_core, env=gurobi_env
+        )
+
+    if verbose == 2:
+        print("")
+        print("")
+        print("")
+        print("SOLVER: *** start gurobi solve ***")
+        gurobi_model.Params.LogToConsole = 1
+    else:
+        gurobi_model.Params.LogToConsole = 0
+
+    # convert surrogates into gbm_model format
+    # and add to gurobi model
+    gbm_model_dict = obj_surrogate.get_gbm_model()
+    add_gbm_to_gurobi_model(
+        obj_surrogate.space, gbm_model_dict, gurobi_model
+    )
+
+    # add std estimator to gurobi model
+    if has_unc:
+        add_std_to_gurobi_model(obj_surrogate, gurobi_model)
+
+    # collect different objective function contributions
+    if obj_surrogate.num_obj > 1:
+        model_mu = get_gbm_model_multi_obj_mu(gurobi_model, obj_surrogate._y)
+
+        if has_unc:
+            model_unc = obj_surrogate.std_estimator.get_gurobi_obj(gurobi_model)
+        else:
+            model_unc = None
+    else:
+        model_mu = get_gbm_model_mu(gurobi_model, obj_surrogate._y, norm=False)
+        model_unc = obj_surrogate.std_estimator.get_gurobi_obj(gurobi_model)
+
+    # collect constraint surrogate
+    # TODO: this is the critical part, how can we integrate a constraint model into Gurobi?
+    const_model_mu = get_gbm_model_mu(gurobi_model, const_surrogate._y, norm=False)
+    const_model_unc = obj_surrogate.std_estimator.get_gurobi_obj(gurobi_model)
+
+    # add obj to gurobi model
+    from opti.sampling.simplex import sample
+
+    weight = sample(obj_surrogate.num_obj, 1)[0] if weight is None else weight
+
+    add_acq_to_gurobi_model(gurobi_model, model_mu, model_unc,
+                            obj_surrogate,
+                            weights=weight,
+                            num_obj=obj_surrogate.num_obj,
+                            acq_func=acq_func,
+                            acq_func_kwargs=acq_func_kwargs,
+                            const_model_mu=const_model_mu,
+                            const_model_unc=const_model_unc)
+
+    # set initial gurobi model vars to std_est reference points
+    if has_unc:
+        if obj_surrogate.std_estimator.std_type == 'distance':
+            set_gurobi_init_to_ref(obj_surrogate, gurobi_model)
+
+    # set gurobi time limit
+    if gurobi_timelimit is not None:
+        gurobi_model.Params.TimeLimit = gurobi_timelimit
+    gurobi_model.Params.OutputFlag = 1
+
+    gurobi_model.update()
+    gurobi_model.optimize()
+
+    assert gurobi_model.SolCount >= 1, "gurobi couldn't find a feasible " + \
+                                       "solution. Try increasing the timelimit if specified. " + \
+                                       "In case you specify your own 'add_model_core' " + \
+                                       "please check that the model is feasible."
+
+    # store optimality gap of gurobi computation
+    gurobi_mipgap = None
+    if acq_func not in ["HLCB"]:
+        gurobi_mipgap = gurobi_model.mipgap
+
+    # output next_x
+    next_x = np.empty(len(obj_surrogate.space.dimensions))
+
+    # cont features
+    for i in gurobi_model._cont_var_dict.keys():
+        next_x[i] = gurobi_model._cont_var_dict[i].x
+
+    # cat features
+    for i in gurobi_model._cat_var_dict.keys():
+        cat = \
+            [
+                key
+                for key in gurobi_model._cat_var_dict[i].keys()
+                if int(
+                round(gurobi_model._cat_var_dict[i][key].x, 1)
+            ) == 1
+            ]
+
+        next_x[i] = cat[0]
+
+    model_mu = get_gbm_multi_obj_from_model(gurobi_model)
+    if has_unc:
+        model_std = gurobi_model._alpha.x
+    else:
+        model_std = None
+
+    return next_x, model_mu, model_std, gurobi_mipgap
 
 
 def get_opt_core_copy(opt_core):
@@ -211,7 +335,9 @@ def add_acq_to_gurobi_model(model, model_mu, model_unc,
                             acq_func="LCB",
                             acq_func_kwargs=None,
                             num_obj=1,
-                            weights=None):
+                            weights=None,
+                            const_model_mu=None, # TODO: either use this or remove in the end
+                            const_model_unc=None):
     """Sets gurobi model objective function to acquisition function.
 
     Parameters
@@ -264,19 +390,21 @@ def add_acq_to_gurobi_model(model, model_mu, model_unc,
 
     elif acq_func == "CWEI" or acq_func == "EI":
         raise NotImplementedError("Gurobipy cannot solve for acq. that contains pdf / cdf") # TODO: integrate the constraint surrogates via the domains??
-        if est._y is None:
-            raise AttributeError("no y's are stored atm")
-        #else:
-        #    print(np.min(est._y))
-        #y_opt = np.min(est._y)
-        #gamma = get_gamma(X, y_opt, model_unc) # how to get X???
 
-        #cdf_approx = (gamma <= 0).sum() / gamma.shape[0]                            # todo: find out how to get mu
-        #pof_approx = (proc_mu <= model.getConstrs()[0].RHS).sum() / gamma.shape[0]  # todo: get threshold from constraint
-        #pof_approx = model_mu * est.yc
-        #lcb = quicksum((proc_mu, kappa * model_unc))
-        ob_expr = lcb * pof_approx   # model_unc * (gamma * cdf_approx + norm.pdf(gamma))
-        model.setObjective(ob_expr, GRB.MINIMIZE)
+        # if const_model_mu is None or const_model_unc is None:
+        #     raise ValueError("Gurobipy needs constraint surogate!")
+        #
+        # # add the constraint in LCB formulation:
+        # # c(x) - kappa * sigma(x) <= 0
+        # proc_mu = const_model_mu - kappa * const_model_unc
+        # model.addConstr(proc_mu <= 0)
+        #
+        # # the objective is LCB + constraint uncertainty
+        # if model_unc is not None:
+        #     ob_expr = quicksum((proc_mu, kappa * model_unc, kappa * const_model_unc))
+        # else:
+        #     ob_expr = proc_mu
+        # model.setObjective(ob_expr, GRB.MINIMIZE)
 
     model.update()
 
