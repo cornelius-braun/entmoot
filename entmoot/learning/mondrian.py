@@ -8,6 +8,7 @@ from lightgbm import LGBMRegressor
 from sklearn.exceptions import NotFittedError
 from sklearn.utils import check_random_state
 
+
 # New experiment
 class LGBMBoostingQuantileRegressor(BaseEstimator, RegressorMixin):
     """Predict several quantiles with one estimator.
@@ -39,6 +40,13 @@ class LGBMBoostingQuantileRegressor(BaseEstimator, RegressorMixin):
     def __init__(self, quantiles=[0.16, 0.5, 0.84], base_estimator=None, n_jobs=1, random_state=None):
         self.quantiles = quantiles
         self.random_state = random_state
+        self.n_jobs = n_jobs
+        self.params = {
+            'objective': 'quantile',
+            'metric': 'quantile',
+            'min_child_samples': 2,
+            'boosting_type': 'gbdt'
+        }
 
         # define base estimator
         self.base_estimator = base_estimator
@@ -47,14 +55,6 @@ class LGBMBoostingQuantileRegressor(BaseEstimator, RegressorMixin):
         else:
             if not isinstance(self.base_estimator, LGBMRegressor):
                 raise ValueError('base_estimator has to be of type LGBMRegressor.')
-
-        self.n_jobs = n_jobs
-        self.params = {
-            'objective': 'quantile',
-            'metric': 'quantile',
-            'min_child_samples': 2,
-            'boosting_type': 'gbdt'
-        }
 
     def fit(self, X, y):
         """Fit one regressor for each quantile.
@@ -127,32 +127,72 @@ class LGBMBoostingQuantileRegressor(BaseEstimator, RegressorMixin):
         return copy.copy(self)
 
     def set_params(self, **params):
+        """
+        Set the parameters of the estimator.
+        This is a wrapper to set the params for LGBM objects.
+        """
         self.base_estimator.set_params(**params)
 
 
 # TODO: docstring
 class MondrianForestRegressor(_sk_MondrianForestRegressor):
+    """
+    A class that creates Mondrian Forest as surrogate model.
+    see https://arxiv.org/abs/1506.03805
+
+    Parameters
+    ----------
+    n_estimators : integer, optional (default=10)
+        The number of trees in the forest.
+
+    max_depth : integer, optional (default=None)
+        The depth to which each tree is grown. If None, the tree is either
+        grown to full depth or is constrained by `min_samples_split`.
+
+    min_samples_split : integer, optional (default=2)
+        Stop growing the tree if all the nodes have lesser than
+        `min_samples_split` number of samples.
+
+    bootstrap : boolean, optional (default=False)
+        If bootstrap is set to False, then all trees are trained on the
+        entire training dataset. Else, each tree is fit on n_samples
+        drawn with replacement from the training dataset.
+
+    random_state : int, RandomState instance or None, optional (default=None)
+        If int, random_state is the seed used by the random number generator;
+        If RandomState instance, random_state is the random number generator;
+        If None, the random number generator is the RandomState instance used
+        by `np.random`.
+
+    verbose : int
+        Sets the verbosity;
+        If 0, it produces no visual output;
+        If 1, it documents the MF behaviour in the console;
+
+    std_type : str
+        Defines which std measure is used.
+        If "default", the empirical mean and variance of the forest are used for predictions, as in the original paper;
+        If "mc_dropout", several MFs are subsampled and their average is used, following https://arxiv.org/abs/1506.02142
+    """
+
     def __init__(self,
-                 n_estimators=10,
-                 max_depth=None,
-                 min_samples_split=2,
-                 bootstrap=False,
-                 n_jobs=1,
-                 random_state=None,
-                 verbose=0,
-                 std_type="default"
+                 n_estimators: int = 10,
+                 max_depth: int = None,
+                 min_samples_split: int = 2,
+                 bootstrap: bool = False,
+                 random_state: int = None,
+                 verbose: int = 0,
+                 std_type: str = "default"
                  ):
         super(MondrianForestRegressor, self).__init__(
             n_estimators=n_estimators,
             max_depth=max_depth,
             min_samples_split=min_samples_split,
             bootstrap=bootstrap,
-            n_jobs=n_jobs,
             random_state=random_state,
             verbose=verbose
         )
         self.std_type = std_type
-
 
     def predict(self, X, return_std=False):
         """Predict continuous output for X.
@@ -178,8 +218,8 @@ class MondrianForestRegressor(_sk_MondrianForestRegressor):
         """
         if self.std_type == "default":
             ret = super(MondrianForestRegressor, self).predict(X, return_std=return_std)
-        elif self.std_type == "ensembling":
-            ret = self.sample_ensembles(X, return_std=return_std)
+        elif self.std_type == "mc_dropout":
+            ret = self.mc_dropout_predict(X, return_std=return_std)
 
         if return_std:
             mu, std = ret
@@ -190,30 +230,58 @@ class MondrianForestRegressor(_sk_MondrianForestRegressor):
         return copy.copy(self)
 
     def set_params(self, **params):
+        """
+        Set the parameters of the Mondrian Forest.
+        This is a wrapper to delete entries from the params for LGBM objects.
+        """
         # delete non-existing keys for MF
         if "min_child_samples" in params.keys():
             del params["min_child_samples"]
-
         if "verbose" in params.keys():
             del params["verbose"]
 
         self.base_estimator.set_params(**params)
 
-    def sample_ensembles(self, X, dropout=0.1, n_iter=10, return_std=False):
+    def mc_dropout_predict(self, X, dropout=0.4, n_iter=20, return_std=False):
+        """
+        This makes a prediction following the MC dropout idea from https://arxiv.org/abs/1506.02142.
+        To do this, the prediction of every single tree is collected and the repeated subsamples of the trees are drawn
+        and averaged. This is equivalent to Bayesian model Averaging for MFs.
+
+        Parameters
+        ----------
+        X : array of shape = (n_samples, n_features)
+            Input data.
+        dropout : float from [0, 1]
+        n_iter
+        return_std
+
+        Returns
+        -------
+
+        """
         if not hasattr(self, "estimators_"):
             raise NotFittedError("The model has to be fit before prediction.")
-        min_trees = np.ceil(len(self.estimators_) / 2)
+
+        if not 0 <= dropout <= 1:
+            raise ValueError(f"Dropout needs to be within 0 and 1, but is {dropout}")
+
+        # define helper arrays and variables
         ensemble_mean = np.zeros((n_iter, X.shape[0]))
+        estimator_predictions = np.zeros((len(self.estimators_), X.shape[0]))
+
+        # get tree predictions once, take subsamples later
+        for i, est in enumerate(self.estimators_):
+            estimator_predictions[i] = est.predict(X, return_std=False)
 
         # sample i random sub-ensembles
+        min_trees = np.ceil(len(self.estimators_) / 2)  # use at least half of the trees for each prediction
         n_trees = max(int(len(self.estimators_) * (1 - dropout)), min_trees)
         for i in range(n_iter):
-            predictions = np.zeros(X.shape[0])
-            estimators = np.random.choice(self.estimators_, n_trees)
-            for est in estimators:
-                predictions += est.predict(X, return_std=False)
-            ensemble_mean[i] = predictions / n_trees
+            prediction_subsample = np.random.default_rng().choice(estimator_predictions, size=n_trees)
+            ensemble_mean[i] = np.mean(prediction_subsample, axis=0)
 
+        # get result
         mean = np.mean(ensemble_mean, axis=0)
         if not return_std:
             return mean

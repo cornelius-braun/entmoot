@@ -170,18 +170,22 @@ def cook_estimator(
                                     random_state=random_state,
                                     cat_idx=cat_idx)
 
-        # TODO: make sure we are using sampling based optimization
         elif ensemble_type == "MF":
+            # creating a tree_reg() from mf uses the entmoot uncertainty w. mondrian forest surrogates
+            # just setting base_estimator as a MondrianForestRegressor will return the uncertainty from the MF itself
             from entmoot.learning.mondrian import MondrianForestRegressor
             mf = []
             for _ in range(num_obj):
-                mf.append( MondrianForestRegressor(std_type="ensembling"))
+                mf.append( MondrianForestRegressor())
             base_estimator = tree_reg(space,
                                       mf,
                                       unc_estimator,
                                       random_state=random_state,
                                       cat_idx=cat_idx)
 
+    # elif base_estimator == "EMPIRICAL":
+    #     from entmoot.learning.mondrian import MondrianForestRegressor, LGBMBoostingQuantileRegressor
+    #     base_estimator = MondrianForestRegressor(n_estimators=20)
 
     if base_estimator_kwargs is not None:
         base_estimator.set_params(**lgbm_params)
