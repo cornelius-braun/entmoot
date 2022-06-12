@@ -1,4 +1,6 @@
 import numpy as np
+from entmoot.utils import is_2Dlistlike
+
 
 class BlackBoxConstraint:
     """
@@ -26,7 +28,24 @@ class BlackBoxConstraint:
         self.rhs = rhs
 
     def evaluate(self, X):
-        X0 = np.reshape(X, (-1, self.n_dim))
+        # check if multiple points are given
+        if not is_2Dlistlike(X):
+            X = [X]
+
+        res = []
+
+        for x in X:
+            res.append(self._eval_point(x))
+
+        if len(res) == 1:
+            res = res[0]
+        else:
+            res = np.asarray(res)
+
+        return res
+
+    def _eval_point(self, x):
+        X0 = np.reshape(x, (self.n_dim))
         return float(self.evaluator(X0))
 
 class UnknownConstraintModel:

@@ -69,7 +69,7 @@ class Parabola(BenchmarkFunction):
 class SimpleCat(BenchmarkFunction):
 
     def __init__(self, func_config={}):
-        from entmoot.space.space import Categorical
+        from skopt.space import Categorical
         self.cat_dims = [
             Categorical(['mult6','pow2'])
         ]
@@ -163,3 +163,23 @@ class Periodic(BenchmarkFunction):
     def _eval_point(self, X):
         X = np.asarray_chkfinite(X).sum()
         return np.sin(X) + np.sin((10. / 3.) * X)
+
+
+class Townsend(BenchmarkFunction):
+    """
+    Townsend function: https://en.wikipedia.org/wiki/Test_functions_for_optimization
+    inspired by https://gpflowopt.readthedocs.io/en/latest/notebooks/constrained_bo.html
+    """
+    def __init__(self, n_dim=2):
+        self.name = "Townsend"
+        self.n_dim = n_dim
+        if self.n_dim != 2:
+            raise ValueError("Townsend only defined for 2D")
+
+    def get_bounds(self, n_dim=2):
+        return [(-2.25, 2.5), (-2.5, 1.75)]
+
+    def _eval_point(self, x):
+        a = np.cos((x[0] - 0.1) * x[1]) ** 2
+        b = x[0] * np.sin(3 * x[0] + x[1])
+        return -(a + b)

@@ -119,7 +119,8 @@ def bb_constraints_minimize(
             raise ValueError("`x0` and `y0` should have the same length")
         # FIXME: this needs testing!!!
         y_feas = [constraint.evaluate(x0) for constraint in bb_constraints]
-        result = optimizer.tell(x0, y0, const_y=y_feas)
+        optimizer.tell(x0, y0, const_y=y_feas)
+        result = optimizer.get_result()
         result.specs = specs
 
     # Handle solver output
@@ -182,8 +183,8 @@ def bb_constraints_minimize(
                 print(f"   new point obj.: {round(next_y, 5)}")
 
         # print best obj until (not including) current iteration
-        # if verbose > 0:
-        print(f"   best obj.:       {round(best_fun, 5)}")
+        if verbose > 0:
+            print(f"   best obj.:       {round(best_fun, 5)}")
 
         # plot objective function
         if plot and optimizer.num_obj == 1 and itr > n_initial_points:
@@ -208,10 +209,9 @@ def bb_constraints_minimize(
         itr += 1
 
     # print end of solve once convergence criteria is met
-    if verbose > 0:
-        print("")
-        print("SOLVER: finished run!")
-        print(f"SOLVER: best obj.: {round(result.fun, 5)}")
-        print("")
+    print("")
+    print("SOLVER: finished run!")
+    print(f"SOLVER: best obj.: {round(result.fun, 5)}")
+    print("")
 
     return result

@@ -37,7 +37,7 @@ from scipy.stats.distributions import rv_discrete
 from scipy.stats.distributions import uniform
 
 from sklearn.utils import check_random_state
-from sklearn.utils.fixes import sp_version
+from skopt.space import Dimension as sk_Dimension
 
 from entmoot.space.transformers import CategoricalEncoder
 from entmoot.space.transformers import StringEncoder
@@ -115,7 +115,7 @@ def check_dimension(dimension, transform=None):
     dimension : Dimension
         Dimension instance.
     """
-    if isinstance(dimension, Dimension):
+    if isinstance(dimension, (Dimension, sk_Dimension)):
         return dimension
 
     if not isinstance(dimension, (list, tuple, np.ndarray)):
