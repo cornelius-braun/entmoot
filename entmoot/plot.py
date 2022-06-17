@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+from entmoot.learning.constraint import UnknownConstraintModel, BlackBoxConstraint
 from entmoot.utils import predict_trained_est
 
 def plotfx_1d(obj_f, surrogate_f, n_init, evaluated_points=None, next_x=None, const_f=None):
@@ -24,14 +27,14 @@ def plotfx_1d(obj_f, surrogate_f, n_init, evaluated_points=None, next_x=None, co
     f.show()
 
 
-# Plot 2D
+# Plot
 def plotfx_2d(obj_f, n_init, evaluated_points=None, next_x=None, const_f=None):
     # get data
     bounds = obj_f.get_bounds(2)
     X, Z = get_plot_data(obj_f, n_dim=2, const_f=const_f)
 
     f, axes = plt.subplots(1, 1, figsize=(7, 5))
-    axes.contourf(X[0].flatten(), X[1].flatten(), Z.reshape(100, 100))
+    im = axes.contourf(X[0].flatten(), X[1].flatten(), Z.reshape(100, 100))
     axes.set_xlabel('x0')
     axes.set_ylabel('x1')
     axes.set_xlim([bounds[0][0], bounds[0][1]])
@@ -45,7 +48,9 @@ def plotfx_2d(obj_f, n_init, evaluated_points=None, next_x=None, const_f=None):
         axes.scatter(X[n_init:, 0], X[n_init:, 1], marker="+", color="yellow")
         axes.scatter(next[:, 0], next[:, 1], marker="x", color="red")
 
-    f.suptitle("Objective function")
+    title = get_2d_plot_title(constraint_f=const_f)
+    f.suptitle(title)
+    f.colorbar(im)
     f.show()
 
 def get_meshgrid(list_number_points_per_axis, dataset_bounds):
@@ -72,17 +77,28 @@ def get_plot_data(obj_f, n_dim=1, const_f=None, surrogate_f=None):
         if surrogate_f is None:
             return X, Z
         else:
-            Z_surrogate, std_surrogate = predict_trained_est(surrogate_f, X, return_std=True)
+            Z_surrogate, std_surrogate = predict_trained_est(surrogate_f, X)
             return X, Z, Z_surrogate, std_surrogate
 
     elif n_dim == 2:
         # get data
         bounds = obj_f.get_bounds(n_dim=2)
         X = get_meshgrid([100] * len(bounds), bounds)
+        X0 = np.dstack(np.meshgrid(*X)).reshape(-1, 2)
 
-        # evaluate
-        Z = obj_f(X)
-        if const_f is not None:
+        if const_f is None:
+            Z = np.asarray(obj_f(X0))
+
+        # determine feasible region
+        # essentially this is the pof that is plotted
+        elif isinstance(const_f, UnknownConstraintModel):
+            Zc_mu, Zc_std = const_f.evaluate(X0)
+            normal = norm(loc=Zc_mu, scale=Zc_std)
+            # Z = pof
+            Z = normal.cdf(const_f.rhs)
+
+        elif isinstance(const_f, BlackBoxConstraint):
+            Z = obj_f(X)
             X0 = np.dstack(np.meshgrid(*X)).reshape(-1, 2)
             Zc = const_f.evaluate(X0)
 
@@ -91,8 +107,20 @@ def get_plot_data(obj_f, n_dim=1, const_f=None, surrogate_f=None):
             Zc[np.logical_not(mask)] = 1
             Z = Z.flatten() * Zc
 
+        else:
+            raise ValueError(f"Wrong type of constraint, "
+                             f"must be in [UnknownConstraintModel, BlackBoxConstraint], but is {type(const_f)}")
+
         return X, Z
 
     else:
         raise ValueError("n dim must be in [1, 2] for plotting!")
 
+
+def get_2d_plot_title(constraint_f):
+    if constraint_f is None:
+        return "Objective function"
+    if isinstance(constraint_f, UnknownConstraintModel):
+        return "Approximated probability of feasibility"
+    if isinstance(constraint_f, BlackBoxConstraint):
+        return "Feasible region"

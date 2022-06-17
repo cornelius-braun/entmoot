@@ -183,3 +183,21 @@ class Townsend(BenchmarkFunction):
         a = np.cos((x[0] - 0.1) * x[1]) ** 2
         b = x[0] * np.sin(3 * x[0] + x[1])
         return -(a + b)
+
+class Branin(BenchmarkFunction):
+    def __init__(self, n_dim=2):
+        self.n_dim = n_dim
+        if self.n_dim != 2:
+            raise ValueError("Branin only defined for 2D")
+        self.name = 'Branin'
+
+    def get_bounds(self, n_dim=2):
+        return [(-5.0, 10.0), (0.0, 15.0)]
+
+    def _eval_point(self, x):
+        b = 5.1 / (4 * np.pi ** 2)
+        c = 5. / np.pi
+        s = 10
+        t = 1. / (8 * np.pi)
+        return (x[1] - b * x[0] ** 2 + c * x[0] - 6) ** 2 + \
+               s * (1 - t) * np.cos(x[0]) + s

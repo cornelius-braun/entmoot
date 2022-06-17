@@ -40,6 +40,18 @@ from scipy.stats import norm
 from typing import Optional
 from scipy.optimize import minimize
 
+def gaussian_acquisition_1D(X, model, y_opt=None, acq_func="LCB", constraint_pof=None,
+                            acq_func_kwargs=None, return_grad=True):
+    """
+    A wrapper around the acquisition function that is called by fmin_l_bfgs_b.
+
+    This is because lbfgs allows only 1-D input.
+    """
+    return _gaussian_acquisition(np.expand_dims(X, axis=0),
+                                 model, y_opt, acq_func=acq_func,
+                                 constraint_pof=constraint_pof,
+                                 acq_func_kwargs=acq_func_kwargs)
+
 def _gaussian_acquisition(X,
                           model,
                           y_opt=None,
@@ -198,7 +210,7 @@ def cw_ei(X, obj_y_opt, obj_model, pof=None):
     if pof is None:
         raise ValueError("Constraint probabilities are not defined")
 
-    ei = expected_improvement(X, obj_model, obj_y_opt) # gaussian_lcb(X, obj_model) # -
+    ei = expected_improvement(X, obj_model, obj_y_opt)
     pof = prob_of_feasibility(X, pof)
     cwei = ei * pof
     return cwei

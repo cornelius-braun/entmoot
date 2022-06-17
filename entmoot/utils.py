@@ -176,7 +176,7 @@ def cook_estimator(
             from entmoot.learning.mondrian import MondrianForestRegressor
             mf = []
             for _ in range(num_obj):
-                mf.append( MondrianForestRegressor())
+                mf.append(MondrianForestRegressor())
             base_estimator = tree_reg(space,
                                       mf,
                                       unc_estimator,
@@ -528,3 +528,22 @@ def predict_trained_est(est, x, return_std=True):
             return temp_mu[0], temp_std[0]
         else:
             return temp_mu[0]
+
+def make_listlike(X):
+    if not is_listlike(X):
+        X = [X]
+    return X
+
+def get_best_feasible(y, constraint_values, constraints):
+    y = np.asarray(y)
+    mask = np.ones_like(y)
+    for i, const in enumerate(constraint_values):
+        c_mask = np.asarray(const) <= constraints[i].rhs
+        mask *= c_mask
+
+    # get best feasible value
+    feasible_vals = y[np.where(mask)]
+    if len(feasible_vals) > 0:
+        return np.min(feasible_vals)
+    else:
+        return np.inf # if we do not have a feasible value, our current best will be infinity

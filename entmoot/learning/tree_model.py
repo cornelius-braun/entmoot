@@ -133,7 +133,6 @@ class EntingRegressor:
         mean or (mean, std): np.array, shape (n_rows, n_dims) 
             or tuple(np.array, np.array), depending on value of `return_std`.
         """
-
         if self.num_obj == 1:
             mean = self.regressor_[0].predict(X)
         else:
@@ -190,6 +189,7 @@ class EntingRegressor:
                           acq_func,
                           acq_func_kwargs,
                           acq_optimizer_kwargs,
+                          constraint_models,
                           add_model_core,
                           weight,
                           verbose,
@@ -232,6 +232,12 @@ class EntingRegressor:
         if has_unc:
             add_std_to_gurobi_model(self, gurobi_model)
 
+        # add constraint models
+        # for model in constraint_models:
+        #     # TODO: how to label the new model?
+        #     model_dict = model.get_gbm_model()
+        #     add_gbm_to_gurobi_model(self.space, model_dict, gurobi_model)
+
         # collect different objective function contributions
         from entmoot.optimizer.gurobi_utils import get_gbm_model_multi_obj_mu, get_gbm_model_mu
 
@@ -244,6 +250,12 @@ class EntingRegressor:
         else:
             model_mu = get_gbm_model_mu(gurobi_model, self._y, norm=False)
             model_unc = self.std_estimator.get_gurobi_obj(gurobi_model)
+
+        # get const_model mu and uncertainty
+        # const_mu = get_constraint_gbm_mu(gurobi_model)
+        # const_unc = constraint_models[0].get_gurobi_obj(gurobi_model)
+        # TODO: add constraints to model based on the model mu
+        gurobi_model.add
 
         # add obj to gurobi model
         from opti.sampling.simplex import sample
@@ -267,6 +279,7 @@ class EntingRegressor:
             gurobi_model.Params.TimeLimit = gurobi_timelimit
         gurobi_model.Params.OutputFlag = 1
 
+        # run the gurobi model
         gurobi_model.update()
         gurobi_model.optimize()
 
@@ -306,6 +319,7 @@ class EntingRegressor:
 
             next_x[i] = cat[0]
 
+        # get results
         model_mu = get_gbm_multi_obj_from_model(gurobi_model)
         if has_unc:
             model_std = gurobi_model._alpha.x

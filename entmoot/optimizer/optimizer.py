@@ -37,10 +37,12 @@ from typing import Optional
 import warnings
 from numbers import Number
 import numpy as np
+from joblib import Parallel, delayed
+from scipy.optimize import fmin_l_bfgs_b
 
-from entmoot.acquisition import _gaussian_acquisition, bfgs_max_acq
+from entmoot.acquisition import _gaussian_acquisition, bfgs_max_acq, gaussian_acquisition_1D
 from entmoot.learning.constraint import UnknownConstraintModel
-from entmoot.utils import list_push
+from entmoot.utils import list_push, get_best_feasible
 
 
 class Optimizer(object):
@@ -427,6 +429,9 @@ class Optimizer(object):
                 print("   -> switch to model-based optimization")
                 self.printed_switch_to_model = True
 
+            # get the best feasible function value so far
+            best_feas_y = get_best_feasible(self.yi, self.yc, self.constraint_model_list)
+
             # this code provides a heuristic solution that uses sampling as the optimization strategy
             if self.acq_optimizer == "sampling":
                 # sample a large number of points and then pick the best ones as
@@ -437,7 +442,7 @@ class Optimizer(object):
                 # NEW: pass the constraints here
                 values = _gaussian_acquisition(
                     X=X, model=est, constraint_pof=self.constraint_model_list,
-                    y_opt=np.min(self.yi),
+                    y_opt=best_feas_y,
                     acq_func=self.acq_func,
                     acq_func_kwargs=self.acq_func_kwargs)
                 # Find the minimum of the acquisition function by randomly
@@ -474,6 +479,7 @@ class Optimizer(object):
                     self.models[-1].get_global_next_x(acq_func=self.acq_func,
                                                       acq_func_kwargs=self.acq_func_kwargs,
                                                       acq_optimizer_kwargs=self.acq_optimizer_kwargs,
+                                                      constraint_models=self.constraint_model_list,
                                                       add_model_core=add_model_core,
                                                       weight=weight,
                                                       verbose=self.verbose,
@@ -482,24 +488,42 @@ class Optimizer(object):
 
                 self.gurobi_mipgap.append(gurobi_mipgap)
 
-            elif self.acq_optimizer == "bfgs":
-                # NEW: bfgs optimization; works badly
-                n_seeds = 10
+            elif self.acq_optimizer == "lbfgs":
+                # # NEW: bfgs optimization; works badly
+                # pass the constraints here
+                # starting points
                 X = self.space.transform(self.space.rvs(
                     n_samples=self.n_points, random_state=self.rng))
-                X_seeds = self.space.transform(self.space.rvs(
-                    n_samples=n_seeds, random_state=self.rng))
-                next_x, model_mu, model_std = bfgs_max_acq(X_tries=X,
-                                                           X_seeds=X_seeds,
-                                                           model=est,
-                                                           constraint_pof=self.constraint_model_list,
-                                                           y_opt=np.min(self.yi),
-                                                           acq_func=self.acq_func,
-                                                           space=self.space,
-                                                           acq_func_kwargs=self.acq_func_kwargs
-                                                           )
+
+                values = _gaussian_acquisition(
+                    X=X, model=est, constraint_pof=self.constraint_model_list,
+                    y_opt=best_feas_y,
+                    acq_func=self.acq_func,
+                    acq_func_kwargs=self.acq_func_kwargs)
+                n_restarts = 5
+                x0 = X[np.argsort(values)[:n_restarts]]
+
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    results = Parallel(n_jobs=1)(
+                        delayed(fmin_l_bfgs_b)(
+                            gaussian_acquisition_1D, x,
+                            args=(est, best_feas_y, self.acq_func, self.acq_func_kwargs),
+                            bounds=self.space.transformed_bounds,
+                            approx_grad=True,
+                            maxiter=20,
+                            iprint=-1)
+                        for x in x0)
+
+                cand_xs = np.array([r[0] for r in results])
+                cand_acqs = np.array([r[1] for r in results])
+                next_x = cand_xs[np.argmin(cand_acqs)]
+
+                # get model mu
+                model_mu, model_std = est.predict(np.asarray(next_x).reshape(1, -1), return_std=True)
+
             else:
-                raise ValueError("Optimization strategy not supported. Must be in [sampling, global, bfgs]")
+                raise ValueError("Optimization strategy not supported. Must be in [sampling, global, lbfgs]")
 
             # note the need for [0] at the end
             self._next_x = self.space.inverse_transform(

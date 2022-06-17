@@ -5,7 +5,7 @@ import numbers
 from entmoot.learning.constraint import BlackBoxConstraint
 from entmoot.optimizer.optimizer import Optimizer
 from entmoot.plot import plotfx_1d, plotfx_2d
-from entmoot.utils import get_verbosity
+from entmoot.utils import get_verbosity, make_listlike
 from typing import List
 
 try:
@@ -74,10 +74,14 @@ def bb_constraints_minimize(
     # calculate the total number of initial points
     n_initial_points = n_initial_points + len(x0)
 
-    # get the constraint r
-    rhs_list = []
-    for constraint in bb_constraints:
-        rhs_list.append(constraint.rhs)
+    # Get the constraint list
+    rhs_list = None
+    if bb_constraints is not None:
+        rhs_list = []
+        # make constraints a list
+        constraints = make_listlike(bb_constraints)
+        for constraint in constraints:
+            rhs_list.append(constraint.rhs)
 
     # check dims
     if plot and len(dimensions) > 2:
@@ -117,7 +121,6 @@ def bb_constraints_minimize(
                 "`y0` should be an iterable or a scalar, got %s" % type(y0))
         if len(x0) != len(y0):
             raise ValueError("`x0` and `y0` should have the same length")
-        # FIXME: this needs testing!!!
         y_feas = [constraint.evaluate(x0) for constraint in bb_constraints]
         optimizer.tell(x0, y0, const_y=y_feas)
         result = optimizer.get_result()
@@ -194,7 +197,7 @@ def bb_constraints_minimize(
                 est.fit(optimizer.space.transform(optimizer.Xi), optimizer.yi)
                 plotfx_1d(obj_f=func, surrogate_f=est, evaluated_points=optimizer.Xi, next_x=next_x, n_init=n_initial_points)
             elif n_dim == 2:
-                plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x, n_init=n_initial_points)
+                plotfx_2d(obj_f=func, evaluated_points=optimizer.Xi, next_x=next_x, n_init=n_initial_points, const_f=optimizer.constraint_model_list[0])
 
 
         # tell next
